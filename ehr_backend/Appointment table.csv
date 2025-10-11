@@ -1,0 +1,11 @@
+Appointment_ID,Patient_ID,Doctor_ID,Appointment_datetime,Status
+01,10,10,10/10/2025 11:00,Pending
+02,15,2,04/10/2025 14:30,Confirmed
+03,20,7,06/10/2025 09:00,Cancelled
+04,5,5,15/10/2025 15:30,Pending
+05,40,9,08/10/2025 10:30,Confirmed
+06,25,4,09/10/2025 13:30,Confirmed
+07,31,6,20/10/2025 12:00,Pending
+08,22,3,28/10/2025 10:00,Pending
+09,14,8,05/11/2025 14:00,Cancelled
+10,47,1,01/11/2025 16:00,Confirmed

@@ -1,0 +1,6 @@
+Drug_ID,Prescription_ID,Drug_name,Dosage,Duration
+1,1,Paracetamol,500 mg - 1 Tablet TDS,5 Days
+2,2,Amoxicillin,250 mg - 1 Capsule TDS,7 Days
+3,3,Ibuprofen,400 mg - 1 Tablet BD,5 Days
+4,4,Omeprazole,20 mg - 1 Tablet OD,14 Days
+5,5,Cetrizine,10 mg -  1 Tablet OD,5 Days

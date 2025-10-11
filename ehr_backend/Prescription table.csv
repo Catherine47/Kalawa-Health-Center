@@ -1,0 +1,6 @@
+Prescription_ID,Patient_ID,Doctor_ID,Diagnosis,Date_Issued
+1,5,6,Malaria,20/09/2025
+2,35,2,Pneumonia,15/09/2025
+3,40,9,Hypertention,28/09/2025
+4,10,2,Diabetes,05/09/2025
+5,20,10,High blood pressure,02/09/2025
