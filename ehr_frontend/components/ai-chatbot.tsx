@@ -70,7 +70,7 @@ export function AIChatbot({ className }: AIChatbotProps) {
         sender: "bot",
         timestamp: new Date(),
         type: "quick-reply",
-        quickReplies: ["Curative", "Maternal & Neonatal", "Family Planning", "Emergency"],
+        quickReplies: ["Cardiology", "Neurology", "Internal Medicine", "Emergency"],
       }
     }
 
@@ -96,16 +96,16 @@ export function AIChatbot({ className }: AIChatbotProps) {
         sender: "bot",
         timestamp: new Date(),
         type: "quick-reply",
-        quickReplies: ["Curative", "Martenity & Neonatal Specialist", "Laboratory Technician", "General Practitioner", "Family Planning Specialist"],
+        quickReplies: ["Cardiologist", "Neurologist", "Orthopedist", "General Practitioner"],
       }
     }
 
     // Emergency information
-    if (lowerMessage.includes("emergency") || lowerMessage.includes("urgent") || lowerMessage.includes("0745 120283")) {
+    if (lowerMessage.includes("emergency") || lowerMessage.includes("urgent") || lowerMessage.includes("911")) {
       return {
         id: Date.now().toString(),
         content:
-          "🚨 For life-threatening emergencies, please call 0745 120283 immediately. Our emergency department is open 24/7.",
+          "🚨 For life-threatening emergencies, please call 911 immediately. Our emergency department is open 24/7 at (555) 911-HELP. For non-emergency urgent care, I can help you find the fastest available appointment.",
         sender: "bot",
         timestamp: new Date(),
         type: "quick-reply",
@@ -118,7 +118,7 @@ export function AIChatbot({ className }: AIChatbotProps) {
       return {
         id: Date.now().toString(),
         content:
-          "Our main hospital is open 24/7 for emergencies. Regular clinic hours are Mon-Fri 8AM-5PM, Sat-Sun 9AM-6PM. You can reach us at (+254)745 120283 or Kalawa.hospital@makueni.go.ke.",
+          "Our main hospital is open 24/7 for emergencies. Regular clinic hours are Mon-Fri 8AM-8PM, Sat-Sun 9AM-6PM. You can reach us at (555) 123-4567 or info@medicareplus.com.",
         sender: "bot",
         timestamp: new Date(),
         type: "info",
@@ -130,7 +130,7 @@ export function AIChatbot({ className }: AIChatbotProps) {
       return {
         id: Date.now().toString(),
         content:
-          "We accept few insurance plans. For specific coverage questions, please contact our billing department at (555) 123-BILL. I can also help you understand what services are typically covered.",
+          "We accept most major insurance plans. For specific coverage questions, please contact our billing department at (555) 123-BILL. I can also help you understand what services are typically covered.",
         sender: "bot",
         timestamp: new Date(),
         type: "quick-reply",
@@ -160,7 +160,7 @@ export function AIChatbot({ className }: AIChatbotProps) {
       return {
         id: Date.now().toString(),
         content:
-          "For prescription refills, you can request them through your patient portal.",
+          "For prescription refills, you can request them through your patient portal or call our pharmacy line at (555) 123-MEDS. Most refills are processed within 24 hours.",
         sender: "bot",
         timestamp: new Date(),
         type: "quick-reply",
@@ -373,7 +373,7 @@ export function AIChatbot({ className }: AIChatbotProps) {
             </form>
             <div className="flex items-center justify-center mt-2">
               <Badge variant="secondary" className="text-xs">
-                Powered by AI • For emergencies call 0745 120283
+                Powered by AI • For emergencies call 911
               </Badge>
             </div>
           </div>

@@ -1,39 +1,48 @@
+// server.js
+import express from "express";
+import cors from "cors";
 
-const express = require('express');
-const cors = require('cors');
-const pool = require('./db');
+// Import routes
+import adminRoutes from "./routes/adminRoutes.js";
+import doctorRoutes from "./routes/doctorRoutes.js";
+import patientRoutes from "./routes/patientRoutes.js";
+import appointmentRoutes from "./routes/appointmentRoutes.js";
+import prescriptionRoutes from "./routes/prescriptionRoutes.js";
+import prescriptionDrugsRoutes from "./routes/prescriptionDrugsRoutes.js";
 
 const app = express();
 const PORT = 5000;
 
-app.use(cors());
-app.use(express.json());
+// ✅ Middleware
+app.use(
+  cors({
+    origin: "http://localhost:3000", // Allow your React frontend to access backend
+    methods: ["GET", "POST", "PUT", "DELETE"], // Allow these HTTP methods
+    allowedHeaders: ["Content-Type"], // Allow these headers
+  })
+);
 
-app.get('/test', (req, res) => {
-  res.send('✅ Server is running correctly!');
+app.use(express.json()); // Parse JSON data
+
+// ✅ Test route
+app.get("/test", (req, res) => {
+  res.send("✅ Server is running and connected to frontend!");
 });
 
-app.get('/db-test', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT NOW()');
-    res.json(result.rows);
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Database connection error');
-  }
+// ✅ Register routes
+app.use("/admins", adminRoutes);
+app.use("/doctors", doctorRoutes);
+app.use("/patients", patientRoutes);
+app.use("/appointments", appointmentRoutes);
+app.use("/prescriptions", prescriptionRoutes);
+app.use("/prescription_drugs", prescriptionDrugsRoutes);
+
+// ✅ Handle unknown routes
+app.use((req, res) => {
+  res.status(404).json({ message: "Route not found" });
 });
 
-// ✅ Route to get all patients
-app.get('/patients', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT * FROM patients ORDER BY patient_id ASC');
-    res.json(result.rows);
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Error fetching patients');
-  }
-});
-
+// ✅ Start server
 app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`✅ Server running on http://localhost:${PORT}`);
 });

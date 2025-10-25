@@ -1,13 +1,19 @@
-const { Pool } = require('pg');
+// db.js
+import pkg from "pg";
+const { Pool } = pkg;
 
-// create a new connection pool
 const pool = new Pool({
-  user: 'postgres',        
+  user: 'postgres',
   host: 'localhost',
-  database: 'ehr_system',      
-  password: '30554106', 
-  port: 5432,              
+  database: 'ehr_system',
+  password: '30554106',
+  port: 5432,
 });
 
-module.exports = pool;
+export { pool }; // ✅ named export
+
+
+
+
+
 

@@ -11,7 +11,7 @@ import "./globals.css"
 export const metadata: Metadata = {
   title: "Kalawa Health Center - Electronic Health Records",
   description: "KEPH Level 4 facility EHR and e-prescription system",
-  
+  generator: "v0.app",
 }
 
 export default function RootLayout({

@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
-import { format } from "date-fns"
+import { format, addDays, isBefore, startOfDay } from "date-fns"
 import { CalendarIcon, Clock, User, CheckCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -88,6 +88,13 @@ export function AppointmentBookingWidget({ onBookingComplete }: AppointmentBooki
     "4:00 PM",
     "4:30 PM",
   ]
+
+  const today = startOfDay(new Date())
+  const maxDate = addDays(today, 90) // Allow booking up to 90 days in advance
+
+  const isDateDisabled = (date: Date) => {
+    return isBefore(date, today) || isBefore(maxDate, date)
+  }
 
   const handleNext = () => {
     if (step < 4) setStep(step + 1)
@@ -241,10 +248,18 @@ export function AppointmentBookingWidget({ onBookingComplete }: AppointmentBooki
                       {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar mode="single" selected={selectedDate} onSelect={setSelectedDate} initialFocus />
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={setSelectedDate}
+                      disabled={isDateDisabled}
+                      initialFocus
+                      defaultMonth={today}
+                    />
                   </PopoverContent>
                 </Popover>
+                <p className="text-xs text-muted-foreground">Appointments available for the next 90 days</p>
               </div>
 
               <div className="space-y-2">
