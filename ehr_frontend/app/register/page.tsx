@@ -16,10 +16,25 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { OTPService } from "@/lib/otp-service"
-import { Heart, User, Mail, Lock, Phone, Calendar, Eye, EyeOff, Shield, AlertCircle, CheckCircle } from "lucide-react"
+import {
+  Heart,
+  User,
+  Mail,
+  Lock,
+  Phone,
+  Calendar,
+  Eye,
+  EyeOff,
+  Shield,
+  AlertCircle,
+  CheckCircle,
+  Stethoscope,
+  Settings,
+} from "lucide-react"
 
 export default function RegisterPage() {
   const router = useRouter()
+  const [role, setRole] = useState<"patient" | "doctor" | "admin">("patient")
   const [step, setStep] = useState(1)
   const [formData, setFormData] = useState({
     firstName: "",
@@ -32,6 +47,9 @@ export default function RegisterPage() {
     confirmPassword: "",
     agreeToTerms: false,
     agreeToPrivacy: false,
+    licenseNumber: "", // For doctors
+    specialization: "", // For doctors
+    department: "", // For admins
   })
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -69,6 +87,20 @@ export default function RegisterPage() {
       setError("Please enter a valid email address.")
       return false
     }
+
+    if (role === "doctor" && !formData.licenseNumber) {
+      setError("Please provide your medical license number.")
+      return false
+    }
+    if (role === "doctor" && !formData.specialization) {
+      setError("Please select your specialization.")
+      return false
+    }
+    if (role === "admin" && !formData.department) {
+      setError("Please select your department.")
+      return false
+    }
+
     return true
   }
 
@@ -121,8 +153,8 @@ export default function RegisterPage() {
       const otpResult = await OTPService.sendOTP(formData.email, "registration")
 
       if (otpResult.success) {
-        // Redirect to OTP verification page with email and purpose
-        router.push(`/verify-otp?email=${encodeURIComponent(formData.email)}&purpose=registration`)
+        // Redirect to OTP verification page with email, purpose, and role
+        router.push(`/verify-otp?email=${encodeURIComponent(formData.email)}&purpose=registration&role=${role}`)
       } else {
         setError(otpResult.message)
       }
@@ -133,13 +165,48 @@ export default function RegisterPage() {
     }
   }
 
+  const getRoleConfig = () => {
+    switch (role) {
+      case "doctor":
+        return {
+          title: "Doctor Registration",
+          description: "Register as a healthcare professional",
+          icon: Stethoscope,
+          email: "doctor@kalawa.go.ke",
+          color: "text-blue-600",
+          bgColor: "bg-blue-50 dark:bg-blue-950",
+        }
+      case "admin":
+        return {
+          title: "Admin Registration",
+          description: "Register as a system administrator",
+          icon: Settings,
+          email: "admin@kalawa.go.ke",
+          color: "text-purple-600",
+          bgColor: "bg-purple-50 dark:bg-purple-950",
+        }
+      default:
+        return {
+          title: "Patient Registration",
+          description: "Register as a patient",
+          icon: Heart,
+          email: "patient@kalawa.go.ke",
+          color: "text-red-600",
+          bgColor: "bg-red-50 dark:bg-red-950",
+        }
+    }
+  }
+
+  const config = getRoleConfig()
+  const IconComponent = config.icon
+
   return (
     <div className="min-h-screen">
       <Header />
 
       <section className="py-20 bg-gradient-to-br from-primary/10 via-background to-accent/10">
         <div className="container mx-auto px-4">
-          <div className="max-w-md mx-auto">
+          <div className="max-w-2xl mx-auto">
             {/* Header */}
             <div className="text-center space-y-4 mb-8">
               <div className="flex items-center justify-center gap-2">
@@ -147,15 +214,43 @@ export default function RegisterPage() {
                   <Heart className="h-6 w-6 text-primary-foreground" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-xl font-bold text-primary">MediCare Plus</span>
-                  <span className="text-xs text-muted-foreground">Patient Registration</span>
+                  <span className="text-xl font-bold text-primary">Kalawa Health Center</span>
+                  <span className="text-xs text-muted-foreground">Registration Portal</span>
                 </div>
               </div>
               <Badge variant="secondary" className="w-fit mx-auto">
                 Create Account
               </Badge>
-              <h1 className="text-3xl font-bold text-balance">Join MediCare Plus</h1>
+              <h1 className="text-3xl font-bold text-balance">Join Kalawa Health Center</h1>
               <p className="text-muted-foreground">Create your account to access our healthcare services</p>
+            </div>
+
+            <div className="flex gap-4 mb-8 justify-center flex-wrap">
+              {[
+                { value: "patient" as const, label: "Patient", icon: User },
+                { value: "doctor" as const, label: "Doctor", icon: Stethoscope },
+                { value: "admin" as const, label: "Admin", icon: Settings },
+              ].map((r) => {
+                const Icon = r.icon
+                return (
+                  <button
+                    key={r.value}
+                    onClick={() => {
+                      setRole(r.value)
+                      setStep(1)
+                      setError("")
+                    }}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-all ${
+                      role === r.value
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-background text-muted-foreground hover:border-primary/50"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span className="font-medium">{r.label}</span>
+                  </button>
+                )
+              })}
             </div>
 
             {/* Progress Indicator */}
@@ -192,7 +287,7 @@ export default function RegisterPage() {
                   {step === 1 ? "Personal Information" : "Account Security"}
                 </CardTitle>
                 <CardDescription className="text-center">
-                  {step === 1 ? "Please provide your personal details" : "Create a secure password for your account"}
+                  {step === 1 ? `Please provide your ${role} details` : "Create a secure password for your account"}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -240,7 +335,7 @@ export default function RegisterPage() {
                           <Input
                             id="email"
                             type="email"
-                            placeholder="john.doe@example.com"
+                            placeholder={config.email}
                             value={formData.email}
                             onChange={(e) => handleInputChange("email", e.target.value)}
                             className="pl-10"
@@ -256,7 +351,7 @@ export default function RegisterPage() {
                           <Input
                             id="phone"
                             type="tel"
-                            placeholder="(555) 123-4567"
+                            placeholder="0745 120 283"
                             value={formData.phone}
                             onChange={(e) => handleInputChange("phone", e.target.value)}
                             className="pl-10"
@@ -294,6 +389,62 @@ export default function RegisterPage() {
                           </Select>
                         </div>
                       </div>
+
+                      {role === "doctor" && (
+                        <>
+                          <div className="space-y-2">
+                            <Label htmlFor="licenseNumber">Medical License Number *</Label>
+                            <Input
+                              id="licenseNumber"
+                              placeholder="Enter your medical license number"
+                              value={formData.licenseNumber}
+                              onChange={(e) => handleInputChange("licenseNumber", e.target.value)}
+                              required
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Specialization *</Label>
+                            <Select
+                              value={formData.specialization}
+                              onValueChange={(value) => handleInputChange("specialization", value)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select specialization" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="cardiology">Cardiology</SelectItem>
+                                <SelectItem value="neurology">Neurology</SelectItem>
+                                <SelectItem value="orthopedics">Orthopedics</SelectItem>
+                                <SelectItem value="pediatrics">Pediatrics</SelectItem>
+                                <SelectItem value="general">General Practice</SelectItem>
+                                <SelectItem value="dermatology">Dermatology</SelectItem>
+                                <SelectItem value="psychiatry">Psychiatry</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </>
+                      )}
+
+                      {role === "admin" && (
+                        <div className="space-y-2">
+                          <Label>Department *</Label>
+                          <Select
+                            value={formData.department}
+                            onValueChange={(value) => handleInputChange("department", value)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select department" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="it">IT & Systems</SelectItem>
+                              <SelectItem value="hr">Human Resources</SelectItem>
+                              <SelectItem value="finance">Finance</SelectItem>
+                              <SelectItem value="operations">Operations</SelectItem>
+                              <SelectItem value="compliance">Compliance & Legal</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
 
                       <Button type="button" size="lg" className="w-full" onClick={handleNext}>
                         Continue

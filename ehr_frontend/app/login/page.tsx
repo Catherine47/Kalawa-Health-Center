@@ -414,7 +414,8 @@ export default function LoginPage() {
                     </>
                   )}
 
-                  {!showTwoFactor && activeRole === "patient" && (
+                  {/* Show registration link for all roles */}
+                  {!showTwoFactor && (
                     <div className="text-center space-y-4">
                       <div className="relative">
                         <div className="absolute inset-0 flex items-center">

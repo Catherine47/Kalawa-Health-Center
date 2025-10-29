@@ -59,7 +59,7 @@ export function Header() {
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-2">
                 <Phone className="h-4 w-4" />
-                <span>Emergency: 0745 120283</span>
+                <span>Emergency: 0745 120 283</span>
               </div>
               <div className="hidden md:flex items-center gap-2">
                 <Mail className="h-4 w-4" />

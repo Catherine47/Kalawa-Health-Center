@@ -8,82 +8,136 @@ router.get("/test", (req, res) => {
   res.send("✅ doctorRoutes is working!");
 });
 
-
-// ✅ Get all doctors
+// ✅ Get all active doctors (exclude soft-deleted)
 router.get("/", async (req, res) => {
   try {
-    const result = await pool.query("SELECT * FROM doctors ORDER BY doctor_id ASC");
+    const result = await pool.query(
+      `SELECT doctor_id, first_name, last_name, specialization, email_address, phone_number, created_at, updated_at
+       FROM doctors
+       WHERE deleted_at IS NULL
+       ORDER BY doctor_id ASC`
+    );
     res.json(result.rows);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+    console.error("Error fetching doctors:", err.message);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
-
-// ✅ Get doctor by ID
+// ✅ Get a single doctor by ID
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
   try {
-    const result = await pool.query("SELECT * FROM doctors WHERE doctor_id = $1", [id]);
-    if (!result.rows.length) return res.status(404).json({ message: "Doctor not found" });
+    const result = await pool.query(
+      `SELECT doctor_id, first_name, last_name, specialization, email_address, phone_number, created_at, updated_at
+       FROM doctors
+       WHERE doctor_id = $1 AND deleted_at IS NULL`,
+      [id]
+    );
+
+    if (result.rows.length === 0)
+      return res.status(404).json({ message: "Doctor not found" });
+
     res.json(result.rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("Error fetching doctor:", err.message);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
-
 
 // ✅ Add a new doctor
 router.post("/", async (req, res) => {
   const { first_name, last_name, specialization, email_address, phone_number } = req.body;
+
+  // Validation
+  if (!first_name || !last_name || !specialization || !email_address || !phone_number) {
+    return res.status(400).json({ message: "All fields are required" });
+  }
+
   try {
     const result = await pool.query(
       `INSERT INTO doctors (first_name, last_name, specialization, email_address, phone_number)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING doctor_id, first_name, last_name, specialization, email_address, phone_number, created_at`,
       [first_name, last_name, specialization, email_address, phone_number]
     );
-    res.status(201).json(result.rows[0]);
+
+    res.status(201).json({
+      message: "Doctor added successfully",
+      doctor: result.rows[0],
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    if (err.code === "23505") {
+      res.status(400).json({ error: "Email or phone number already exists" });
+    } else {
+      console.error("Error adding doctor:", err.message);
+      res.status(500).json({ error: "Internal server error" });
+    }
   }
 });
 
-
-// ✅ Update a doctor
+// ✅ Update doctor details
 router.put("/:id", async (req, res) => {
   const { id } = req.params;
   const { first_name, last_name, specialization, email_address, phone_number } = req.body;
 
   try {
+    // Check if doctor exists and not deleted
+    const existing = await pool.query(
+      "SELECT * FROM doctors WHERE doctor_id = $1 AND deleted_at IS NULL",
+      [id]
+    );
+    if (existing.rows.length === 0)
+      return res.status(404).json({ message: "Doctor not found" });
+
     const result = await pool.query(
-      `UPDATE doctors 
-       SET first_name = $1, last_name = $2, specialization = $3, 
-           email_address = $4, phone_number = $5
+      `UPDATE doctors
+       SET first_name = $1,
+           last_name = $2,
+           specialization = $3,
+           email_address = $4,
+           phone_number = $5,
+           updated_at = NOW()
        WHERE doctor_id = $6
-       RETURNING *`,
+       RETURNING doctor_id, first_name, last_name, specialization, email_address, phone_number, updated_at`,
       [first_name, last_name, specialization, email_address, phone_number, id]
     );
 
-    if (!result.rows.length) return res.status(404).json({ message: "Doctor not found" });
-    res.json(result.rows[0]);
+    res.json({
+      message: "Doctor updated successfully",
+      doctor: result.rows[0],
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    if (err.code === "23505") {
+      res.status(400).json({ error: "Email or phone number already exists" });
+    } else {
+      console.error("Error updating doctor:", err.message);
+      res.status(500).json({ error: "Internal server error" });
+    }
   }
 });
 
-
-// ✅ Delete a doctor
+// ✅ Soft delete doctor (not permanently)
 router.delete("/:id", async (req, res) => {
   const { id } = req.params;
+
   try {
-    const result = await pool.query("DELETE FROM doctors WHERE doctor_id = $1 RETURNING *", [id]);
-    if (!result.rows.length) return res.status(404).json({ message: "Doctor not found" });
-    res.json({ message: "Doctor deleted successfully" });
+    const result = await pool.query(
+      `UPDATE doctors
+       SET deleted_at = NOW()
+       WHERE doctor_id = $1 AND deleted_at IS NULL
+       RETURNING doctor_id`,
+      [id]
+    );
+
+    if (result.rows.length === 0)
+      return res.status(404).json({ message: "Doctor not found or already deleted" });
+
+    res.json({ message: "Doctor soft-deleted successfully" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("Error deleting doctor:", err.message);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
-
 
 export default router;
