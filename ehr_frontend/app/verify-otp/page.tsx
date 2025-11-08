@@ -189,7 +189,7 @@ export default function VerifyOTPPage() {
                   <Heart className="h-6 w-6 text-primary-foreground" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-xl font-bold text-primary">MediCare Plus</span>
+                  <span className="text-xl font-bold text-primary">Kalawa Health Center</span>
                   <span className="text-xs text-muted-foreground">Email Verification</span>
                 </div>
               </div>

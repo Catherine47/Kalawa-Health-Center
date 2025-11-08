@@ -105,7 +105,7 @@ export default function ForgotPasswordPage() {
                   <Heart className="h-6 w-6 text-primary-foreground" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-xl font-bold text-primary">MediCare Plus</span>
+                  <span className="text-xl font-bold text-primary">Kalawa Health Center</span>
                   <span className="text-xs text-muted-foreground">Password Reset</span>
                 </div>
               </div>
@@ -182,8 +182,8 @@ export default function ForgotPasswordPage() {
                   <h3 className="font-semibold text-sm">Need Help?</h3>
                   <p className="text-xs text-muted-foreground">
                     If you're having trouble, contact our support team at{" "}
-                    <Link href="mailto:support@medicareplus.com" className="text-primary hover:underline">
-                      support@medicareplus.com
+                    <Link href="mailto:support@kalawa.go.ke" className="text-primary hover:underline">
+                      support@kalawa.go.ke
                     </Link>
                   </p>
                 </div>

@@ -33,8 +33,7 @@ import {
 export default function LoginPage() {
   const [activeRole, setActiveRole] = useState<UserRole>("patient")
   const [formData, setFormData] = useState({
-    username: "",
-    email: "",
+    email_address: "",
     password: "",
     rememberMe: false,
     twoFactorCode: "",
@@ -84,16 +83,14 @@ export default function LoginPage() {
     setActiveRole(role)
     setError("")
     setShowTwoFactor(false)
-    // Set default credentials for demo purposes
     const defaultCredentials = {
-      patient: { username: "patient_user", email: "patient@kalawa.go.ke" },
-      doctor: { username: "doctor_user", email: "doctor@kalawa.go.ke" },
-      admin: { username: "admin_user", email: "admin@kalawa.go.ke" },
+      patient: { email_address: "patient@kalawa.go.ke" },
+      doctor: { email_address: "doctor@kalawa.go.ke" },
+      admin: { email_address: "admin@kalawa.go.ke" },
     }
     setFormData((prev) => ({
       ...prev,
-      username: defaultCredentials[role].username,
-      email: defaultCredentials[role].email,
+      email_address: defaultCredentials[role].email_address,
     }))
   }
 
@@ -111,15 +108,14 @@ export default function LoginPage() {
 
     if (!showTwoFactor) {
       // First step: validate credentials and request 2FA
-      const success = await login(formData.email, formData.password, activeRole)
+      const success = await login(formData.email_address, formData.password, activeRole)
 
       if (success) {
         setShowTwoFactor(true)
         setError("")
-        // In a real app, this would send SMS/email with 2FA code
         console.log("[v0] 2FA code sent to user")
       } else {
-        setError("Invalid username/email or password. Please try again.")
+        setError("Invalid email address or password. Please try again.")
       }
     } else {
       // Second step: validate 2FA code
@@ -257,22 +253,6 @@ export default function LoginPage() {
                   {!showTwoFactor ? (
                     <>
                       <div className="space-y-2">
-                        <Label htmlFor="username">Username</Label>
-                        <div className="relative">
-                          <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            id="username"
-                            type="text"
-                            placeholder="Enter your username"
-                            value={formData.username}
-                            onChange={(e) => handleInputChange("username", e.target.value)}
-                            className="pl-10"
-                            required
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
                         <Label htmlFor="email">Email Address</Label>
                         <div className="relative">
                           <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
@@ -280,8 +260,8 @@ export default function LoginPage() {
                             id="email"
                             type="email"
                             placeholder={`${activeRole}@kalawa.go.ke`}
-                            value={formData.email}
-                            onChange={(e) => handleInputChange("email", e.target.value)}
+                            value={formData.email_address}
+                            onChange={(e) => handleInputChange("email_address", e.target.value)}
                             className="pl-10"
                             required
                           />
@@ -452,9 +432,8 @@ export default function LoginPage() {
                 <div className="text-center space-y-2">
                   <h3 className="font-semibold text-sm">Demo Credentials</h3>
                   <div className="text-xs text-muted-foreground space-y-1">
-                    <div>Username: {activeRole}_user</div>
                     <div>Email: {activeRole}@kalawa.go.ke</div>
-                    <div>Password: password123</div>
+                    <div>Password: Password123!</div>
                   </div>
                 </div>
               </CardContent>

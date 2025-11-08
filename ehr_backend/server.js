@@ -1,48 +1,88 @@
-// server.js
+// ✅ server.js — Final Production-Ready Version
 import express from "express";
 import cors from "cors";
+import dotenv from "dotenv";
+import morgan from "morgan";
+import { pool } from "./db.js";
 
-// Import routes
+// ✅ Load environment variables
+dotenv.config();
+
+// ✅ Import route files
 import adminRoutes from "./routes/adminRoutes.js";
 import doctorRoutes from "./routes/doctorRoutes.js";
 import patientRoutes from "./routes/patientRoutes.js";
 import appointmentRoutes from "./routes/appointmentRoutes.js";
 import prescriptionRoutes from "./routes/prescriptionRoutes.js";
 import prescriptionDrugsRoutes from "./routes/prescriptionDrugsRoutes.js";
+import authRoutes from "./routes/authRoutes.js"; // ✅ Include your OTP/auth route
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
-// ✅ Middleware
+// ✅ Middleware setup
 app.use(
   cors({
-    origin: "http://localhost:3000", // Allow your React frontend to access backend
-    methods: ["GET", "POST", "PUT", "DELETE"], // Allow these HTTP methods
-    allowedHeaders: ["Content-Type"], // Allow these headers
+    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+app.use(express.json());
+app.use(morgan("dev"));
 
-app.use(express.json()); // Parse JSON data
-
-// ✅ Test route
-app.get("/test", (req, res) => {
-  res.send("✅ Server is running and connected to frontend!");
+// ✅ Root route
+app.get("/", (req, res) => {
+  res.send("✅ Kalawa Health EHR Backend API is running successfully!");
 });
 
-// ✅ Register routes
-app.use("/admins", adminRoutes);
-app.use("/doctors", doctorRoutes);
-app.use("/patients", patientRoutes);
-app.use("/appointments", appointmentRoutes);
-app.use("/prescriptions", prescriptionRoutes);
-app.use("/prescription_drugs", prescriptionDrugsRoutes);
+// ✅ Health check route
+app.get("/test", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT NOW()");
+    res.json({
+      status: "OK",
+      message: "✅ Server and Database are live and connected!",
+      db_time: result.rows[0].now,
+    });
+  } catch (error) {
+    console.error("❌ Database connection test failed:", error.message);
+    res.status(500).json({ error: "Database connection failed" });
+  }
+});
 
-// ✅ Handle unknown routes
+// ✅ Register all routes
+app.use("/api/admins", adminRoutes);
+app.use("/api/doctors", doctorRoutes);
+app.use("/api/patients", patientRoutes);
+app.use("/api/appointments", appointmentRoutes);
+app.use("/api/prescriptions", prescriptionRoutes);
+app.use("/api/prescription_drugs", prescriptionDrugsRoutes);
+app.use("/api/auth", authRoutes); // ✅ OTP verification endpoint
+
+// ✅ 404 handler (unknown routes)
 app.use((req, res) => {
-  res.status(404).json({ message: "Route not found" });
+  res.status(404).json({ message: "❌ Route not found" });
 });
 
-// ✅ Start server
-app.listen(PORT, () => {
-  console.log(`✅ Server running on http://localhost:${PORT}`);
+// ✅ Global error handler
+app.use((err, req, res, next) => {
+  console.error("🔥 Server Error:", err.stack);
+  res.status(500).json({ error: "Internal server error" });
 });
+
+// ✅ Start server only after verifying DB connection
+(async () => {
+  try {
+    await pool.query("SELECT NOW()");
+    console.log("✅ PostgreSQL Database connected successfully.");
+
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running at: http://localhost:${PORT}`);
+      console.log(`🌐 Allowed frontend: ${process.env.FRONTEND_URL || "http://localhost:3000"}`);
+    });
+  } catch (err) {
+    console.error("❌ Database connection failed. Server not started:", err.message);
+    process.exit(1);
+  }
+})();

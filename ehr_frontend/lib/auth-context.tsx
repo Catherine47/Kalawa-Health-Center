@@ -2,6 +2,7 @@
 
 import type React from "react"
 import { createContext, useContext, useState, useEffect } from "react"
+import { apiCall } from "./api-client"
 
 export type UserRole = "patient" | "doctor" | "admin"
 
@@ -11,10 +12,10 @@ export interface User {
   email: string
   role: UserRole
   phone?: string
-  department?: string // for doctors
-  specialization?: string // for doctors
-  patientId?: string // for patients
-  permissions?: string[] // for admins
+  department?: string
+  specialization?: string
+  patientId?: string
+  permissions?: string[]
 }
 
 interface AuthContextType {
@@ -30,51 +31,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
-  // Mock user data for different roles
-  const mockUsers = {
-    patient: {
-      id: "1",
-      name: "John Doe",
-      email: "patient@kalawa.go.ke",
-      role: "patient" as UserRole,
-      phone: "0712345678",
-      patientId: "KHC-2025-001",
-    },
-    doctor: {
-      id: "2",
-      name: "Dr. Sarah Mwangi",
-      email: "doctor@kalawa.go.ke",
-      role: "doctor" as UserRole,
-      phone: "0723456789",
-      department: "Internal Medicine",
-      specialization: "General Practice",
-    },
-    admin: {
-      id: "3",
-      name: "Admin User",
-      email: "admin@kalawa.go.ke",
-      role: "admin" as UserRole,
-      phone: "0734567890",
-      permissions: ["manage_users", "view_reports", "system_settings"],
-    },
-  }
-
   const login = async (email: string, password: string, role: UserRole): Promise<boolean> => {
     setIsLoading(true)
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      const response = await apiCall("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({
+          email_address: email,
+          password,
+          role,
+        }),
+      })
 
-      // Mock authentication logic
-      const mockUser = mockUsers[role]
-      if (email === mockUser.email && password === "password123") {
-        setUser(mockUser)
-        localStorage.setItem("user", JSON.stringify(mockUser))
-        return true
+      const userData: User = {
+        id: response.user.id,
+        name: response.user.first_name + " " + response.user.last_name,
+        email: response.user.email_address,
+        role: role,
+        phone: response.user.phone_number,
+        specialization: response.user.specialization,
       }
-      return false
+
+      setUser(userData)
+      localStorage.setItem("authToken", response.token)
+      localStorage.setItem("userRole", role)
+      localStorage.setItem("user", JSON.stringify(userData))
+
+      return true
     } catch (error) {
+      console.log("[v0] Login error:", error)
       return false
     } finally {
       setIsLoading(false)
@@ -83,10 +69,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = () => {
     setUser(null)
+    localStorage.removeItem("authToken")
+    localStorage.removeItem("userRole")
     localStorage.removeItem("user")
   }
 
-  // Check for existing session on mount
   useEffect(() => {
     const savedUser = localStorage.getItem("user")
     if (savedUser) {

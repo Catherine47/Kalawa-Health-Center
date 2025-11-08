@@ -32,7 +32,7 @@ export function AIChatbot({ className }: AIChatbotProps) {
     {
       id: "1",
       content:
-        "Hello! I'm MediBot, your healthcare assistant. I can help you with appointments, general health questions, and navigating our services. How can I assist you today?",
+        "Hello! I'm HealthBot, your Kalawa Health Center assistant. I can help you with appointments, general health questions, and navigating our services. How can I assist you today?",
       sender: "bot",
       timestamp: new Date(),
       type: "quick-reply",
@@ -118,7 +118,7 @@ export function AIChatbot({ className }: AIChatbotProps) {
       return {
         id: Date.now().toString(),
         content:
-          "Our main hospital is open 24/7 for emergencies. Regular clinic hours are Mon-Fri 8AM-8PM, Sat-Sun 9AM-6PM. You can reach us at (555) 123-4567 or info@medicareplus.com.",
+          "Our main hospital is open 24/7 for emergencies. Regular clinic hours are Mon-Fri 8AM-8PM, Sat-Sun 9AM-6PM. You can reach us at 0745 120 283 or info@kalawa.go.ke.",
         sender: "bot",
         timestamp: new Date(),
         type: "info",
@@ -130,7 +130,7 @@ export function AIChatbot({ className }: AIChatbotProps) {
       return {
         id: Date.now().toString(),
         content:
-          "We accept most major insurance plans. For specific coverage questions, please contact our billing department at (555) 123-BILL. I can also help you understand what services are typically covered.",
+          "We accept most major insurance plans. For specific coverage questions, please contact our billing department at 0745 120 283. I can also help you understand what services are typically covered.",
         sender: "bot",
         timestamp: new Date(),
         type: "quick-reply",
@@ -160,7 +160,7 @@ export function AIChatbot({ className }: AIChatbotProps) {
       return {
         id: Date.now().toString(),
         content:
-          "For prescription refills, you can request them through your patient portal or call our pharmacy line at (555) 123-MEDS. Most refills are processed within 24 hours.",
+          "For prescription refills, you can request them through your patient portal or call our pharmacy line at 0745 120 283. Most refills are processed within 24 hours.",
         sender: "bot",
         timestamp: new Date(),
         type: "quick-reply",
@@ -250,8 +250,8 @@ export function AIChatbot({ className }: AIChatbotProps) {
             <Bot className="w-4 h-4" />
           </div>
           <div>
-            <CardTitle className="text-sm font-semibold">MediBot</CardTitle>
-            <p className="text-xs text-primary-foreground/80">Healthcare Assistant</p>
+            <CardTitle className="text-sm font-semibold">HealthBot</CardTitle>
+            <p className="text-xs text-primary-foreground/80">Kalawa Health Center Assistant</p>
           </div>
         </div>
         <div className="flex items-center gap-1">

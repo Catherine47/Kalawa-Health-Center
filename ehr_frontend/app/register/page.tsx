@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-
+import { apiCall } from "@/lib/api-client"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -22,7 +22,6 @@ import {
   Mail,
   Lock,
   Phone,
-  Calendar,
   Eye,
   EyeOff,
   Shield,
@@ -37,19 +36,18 @@ export default function RegisterPage() {
   const [role, setRole] = useState<"patient" | "doctor" | "admin">("patient")
   const [step, setStep] = useState(1)
   const [formData, setFormData] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    phone: "",
-    dateOfBirth: "",
-    gender: "",
+    first_name: "",
+    last_name: "",
+    email_address: "",
+    phone_number: "",
+    dob: "", // Added DOB field for patient
+    gender: "", // Added gender field for patient
     password: "",
     confirmPassword: "",
     agreeToTerms: false,
     agreeToPrivacy: false,
-    licenseNumber: "", // For doctors
     specialization: "", // For doctors
-    department: "", // For admins
+    username: "", // For admins
   })
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -79,25 +77,26 @@ export default function RegisterPage() {
   }
 
   const validateStep1 = () => {
-    if (!formData.firstName || !formData.lastName || !formData.email || !formData.phone) {
+    if (!formData.first_name || !formData.last_name || !formData.email_address) {
       setError("Please fill in all required fields.")
       return false
     }
-    if (!/\S+@\S+\.\S+/.test(formData.email)) {
+    if (!/\S+@\S+\.\S+/.test(formData.email_address)) {
       setError("Please enter a valid email address.")
       return false
     }
 
-    if (role === "doctor" && !formData.licenseNumber) {
-      setError("Please provide your medical license number.")
+    if (role === "patient" && (!formData.phone_number || !formData.dob || !formData.gender)) {
+      setError("Please fill in all required fields.")
       return false
     }
-    if (role === "doctor" && !formData.specialization) {
-      setError("Please select your specialization.")
+
+    if (role === "doctor" && (!formData.phone_number || !formData.specialization)) {
+      setError("Please fill in all required fields.")
       return false
     }
-    if (role === "admin" && !formData.department) {
-      setError("Please select your department.")
+    if (role === "admin" && !formData.username) {
+      setError("Please enter a username.")
       return false
     }
 
@@ -147,19 +146,47 @@ export default function RegisterPage() {
     setError("")
 
     try {
-      // Simulate user registration API call
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      const registrationData = {
+        first_name: formData.first_name,
+        last_name: formData.last_name,
+        email_address: formData.email_address,
+        password: formData.password,
+        ...(role === "patient" && {
+          phone_number: formData.phone_number,
+          dob: formData.dob,
+          gender: formData.gender,
+        }),
+        ...(role === "doctor" && {
+          phone_number: formData.phone_number,
+          specialization: formData.specialization,
+        }),
+        ...(role === "admin" && {
+          username: formData.username,
+        }),
+      }
 
-      const otpResult = await OTPService.sendOTP(formData.email, "registration")
+      console.log("[v0] Registering user:", { role, ...registrationData })
+
+      // Call backend registration endpoint
+      const registerResponse = await apiCall(`/api/${role}s/register`, {
+        method: "POST",
+        body: JSON.stringify(registrationData),
+      })
+
+      console.log("[v0] Registration successful:", registerResponse)
+
+      // Now send OTP
+      const otpResult = await OTPService.sendOTP(formData.email_address, "registration")
 
       if (otpResult.success) {
         // Redirect to OTP verification page with email, purpose, and role
-        router.push(`/verify-otp?email=${encodeURIComponent(formData.email)}&purpose=registration&role=${role}`)
+        router.push(`/verify-otp?email=${encodeURIComponent(formData.email_address)}&purpose=registration&role=${role}`)
       } else {
         setError(otpResult.message)
       }
     } catch (err) {
-      setError("Registration failed. Please try again.")
+      console.error("[v0] Registration error:", err)
+      setError(err instanceof Error ? err.message : "Registration failed. Please try again.")
     } finally {
       setIsLoading(false)
     }
@@ -309,8 +336,8 @@ export default function RegisterPage() {
                             <Input
                               id="firstName"
                               placeholder="John"
-                              value={formData.firstName}
-                              onChange={(e) => handleInputChange("firstName", e.target.value)}
+                              value={formData.first_name}
+                              onChange={(e) => handleInputChange("first_name", e.target.value)}
                               className="pl-10"
                               required
                             />
@@ -321,8 +348,8 @@ export default function RegisterPage() {
                           <Input
                             id="lastName"
                             placeholder="Doe"
-                            value={formData.lastName}
-                            onChange={(e) => handleInputChange("lastName", e.target.value)}
+                            value={formData.last_name}
+                            onChange={(e) => handleInputChange("last_name", e.target.value)}
                             required
                           />
                         </div>
@@ -336,72 +363,67 @@ export default function RegisterPage() {
                             id="email"
                             type="email"
                             placeholder={config.email}
-                            value={formData.email}
-                            onChange={(e) => handleInputChange("email", e.target.value)}
+                            value={formData.email_address}
+                            onChange={(e) => handleInputChange("email_address", e.target.value)}
                             className="pl-10"
                             required
                           />
                         </div>
                       </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="phone">Phone Number *</Label>
-                        <div className="relative">
-                          <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            id="phone"
-                            type="tel"
-                            placeholder="0745 120 283"
-                            value={formData.phone}
-                            onChange={(e) => handleInputChange("phone", e.target.value)}
-                            className="pl-10"
-                            required
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
+                      {(role === "patient" || role === "doctor") && (
                         <div className="space-y-2">
-                          <Label htmlFor="dateOfBirth">Date of Birth</Label>
+                          <Label htmlFor="phone">Phone Number *</Label>
                           <div className="relative">
-                            <Calendar className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                            <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                             <Input
-                              id="dateOfBirth"
-                              type="date"
-                              value={formData.dateOfBirth}
-                              onChange={(e) => handleInputChange("dateOfBirth", e.target.value)}
+                              id="phone"
+                              type="tel"
+                              placeholder="0745 120 283"
+                              value={formData.phone_number}
+                              onChange={(e) => handleInputChange("phone_number", e.target.value)}
                               className="pl-10"
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Gender</Label>
-                          <Select value={formData.gender} onValueChange={(value) => handleInputChange("gender", value)}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select gender" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="male">Male</SelectItem>
-                              <SelectItem value="female">Female</SelectItem>
-                              <SelectItem value="other">Other</SelectItem>
-                              <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      {role === "doctor" && (
-                        <>
-                          <div className="space-y-2">
-                            <Label htmlFor="licenseNumber">Medical License Number *</Label>
-                            <Input
-                              id="licenseNumber"
-                              placeholder="Enter your medical license number"
-                              value={formData.licenseNumber}
-                              onChange={(e) => handleInputChange("licenseNumber", e.target.value)}
                               required
                             />
                           </div>
+                        </div>
+                      )}
+
+                      {role === "patient" && (
+                        <>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="dob">Date of Birth *</Label>
+                              <Input
+                                id="dob"
+                                type="date"
+                                value={formData.dob}
+                                onChange={(e) => handleInputChange("dob", e.target.value)}
+                                required
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="gender">Gender *</Label>
+                              <Select
+                                value={formData.gender}
+                                onValueChange={(value) => handleInputChange("gender", value)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select gender" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="male">Male</SelectItem>
+                                  <SelectItem value="female">Female</SelectItem>
+                                  <SelectItem value="other">Other</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {role === "doctor" && (
+                        <>
                           <div className="space-y-2">
                             <Label>Specialization *</Label>
                             <Select
@@ -427,24 +449,21 @@ export default function RegisterPage() {
 
                       {role === "admin" && (
                         <div className="space-y-2">
-                          <Label>Department *</Label>
-                          <Select
-                            value={formData.department}
-                            onValueChange={(value) => handleInputChange("department", value)}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select department" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="it">IT & Systems</SelectItem>
-                              <SelectItem value="hr">Human Resources</SelectItem>
-                              <SelectItem value="finance">Finance</SelectItem>
-                              <SelectItem value="operations">Operations</SelectItem>
-                              <SelectItem value="compliance">Compliance & Legal</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          <Label htmlFor="username">Username *</Label>
+                          <div className="relative">
+                            <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                            <Input
+                              id="username"
+                              placeholder="Enter your username"
+                              value={formData.username}
+                              onChange={(e) => handleInputChange("username", e.target.value)}
+                              className="pl-10"
+                              required
+                            />
+                          </div>
                         </div>
                       )}
+                      {/* End of update */}
 
                       <Button type="button" size="lg" className="w-full" onClick={handleNext}>
                         Continue
