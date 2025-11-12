@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { registerPatient, verifyPatientOtp } from "@/lib/api";
 import { useRouter } from "next/navigation";
-import axios from "axios";
-import { OTPService } from "@/lib/otpService";
 
-export default function RegisterPage() {
+export default function PatientRegisterPage() {
   const router = useRouter();
+
   const [formData, setFormData] = useState({
     first_name: "",
     last_name: "",
@@ -17,15 +17,18 @@ export default function RegisterPage() {
     password: "",
   });
 
+  const [otp, setOtp] = useState("");
+  const [showOtpForm, setShowOtpForm] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  // ✅ Handle input changes
+  // Handle input changes
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // ✅ Basic frontend validation
+  // Basic form validation
   const validateForm = () => {
     const { first_name, last_name, dob, gender, email_address, phone_number, password } = formData;
 
@@ -33,22 +36,16 @@ export default function RegisterPage() {
       setError("Please fill in all fields.");
       return false;
     }
-
-    // Validate email format
     if (!/\S+@\S+\.\S+/.test(email_address)) {
       setError("Please enter a valid email address.");
       return false;
     }
-
-    // Password length check
     if (password.length < 6) {
       setError("Password must be at least 6 characters.");
       return false;
     }
-
-    // Phone number digits check
     if (!/^\d{10,15}$/.test(phone_number)) {
-      setError("Phone number must contain 10-15 digits.");
+      setError("Phone number must be 10–15 digits.");
       return false;
     }
 
@@ -56,110 +53,162 @@ export default function RegisterPage() {
     return true;
   };
 
-  // ✅ Handle form submission
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
+  // Handle patient registration
+  const handleRegister = async () => {
     if (!validateForm()) return;
 
     setLoading(true);
+    setError("");
+    setMessage("Registering patient...");
 
     try {
-      // 1️⃣ Register patient
-      const registerRes = await axios.post("http://localhost:5000/patients/register", formData);
+      const res = await registerPatient(formData);
 
-      if (registerRes.status === 201) {
-        console.log("✅ Registration successful:", registerRes.data);
-
-        // 2️⃣ Send OTP via backend
-        await OTPService.sendOTP(formData.email_address, "registration", "patient");
-
-        // 3️⃣ Redirect to OTP verification page
-        router.push(
-          `/verify-otp?email=${encodeURIComponent(formData.email_address)}&purpose=registration&role=patient`
-        );
-      }
+      // OTP is already sent by backend
+      setMessage("✅ Registration successful! OTP sent to your email.");
+      setShowOtpForm(true);
     } catch (err: any) {
-      console.error("❌ Registration failed:", err.response?.data || err.message);
-      setError(err.response?.data?.error || "Registration failed. Please try again.");
+      console.error("❌ Registration error:", err.response?.data || err.message);
+      setError(err.response?.data?.error || "Registration failed. Try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle OTP verification
+  const handleVerifyOtp = async () => {
+    if (!otp) {
+      setError("Please enter the OTP.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setMessage("Verifying OTP...");
+
+    try {
+      await verifyPatientOtp(formData.email_address, otp);
+      setMessage("✅ OTP verified! Registration complete.");
+      setShowOtpForm(false);
+
+      // Optional: redirect to login page
+      router.push("/patient/login");
+    } catch (err: any) {
+      console.error("❌ OTP verification error:", err.response?.data || err.message);
+      setError(err.response?.data?.error || "OTP verification failed. Try again.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-3 max-w-md mx-auto p-4">
-      {error && <p className="text-red-600 font-medium">{error}</p>}
+    <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-gray-100">
+      <div className="w-full max-w-md p-6 bg-white rounded-2xl shadow-lg">
+        <h2 className="text-2xl font-bold mb-4 text-center text-blue-600">Patient Registration</h2>
 
-      <input
-        name="first_name"
-        value={formData.first_name}
-        onChange={handleChange}
-        placeholder="First Name"
-        required
-        className="border p-2 rounded"
-      />
-      <input
-        name="last_name"
-        value={formData.last_name}
-        onChange={handleChange}
-        placeholder="Last Name"
-        required
-        className="border p-2 rounded"
-      />
-      <input
-        type="date"
-        name="dob"
-        value={formData.dob}
-        onChange={handleChange}
-        required
-        className="border p-2 rounded"
-      />
-      <select
-        name="gender"
-        value={formData.gender}
-        onChange={handleChange}
-        required
-        className="border p-2 rounded"
-      >
-        <option value="">Select Gender</option>
-        <option value="male">Male</option>
-        <option value="female">Female</option>
-      </select>
-      <input
-        type="email"
-        name="email_address"
-        value={formData.email_address}
-        onChange={handleChange}
-        placeholder="Email"
-        required
-        className="border p-2 rounded"
-      />
-      <input
-        type="tel"
-        name="phone_number"
-        value={formData.phone_number}
-        onChange={handleChange}
-        placeholder="Phone Number"
-        required
-        className="border p-2 rounded"
-      />
-      <input
-        type="password"
-        name="password"
-        value={formData.password}
-        onChange={handleChange}
-        placeholder="Password"
-        required
-        className="border p-2 rounded"
-      />
-      <button
-        type="submit"
-        disabled={loading}
-        className="bg-blue-600 text-white py-2 rounded disabled:opacity-50"
-      >
-        {loading ? "Registering..." : "Register"}
-      </button>
-    </form>
+        {error && <p className="text-red-600 text-center font-medium mb-2">{error}</p>}
+        {message && <p className="text-green-600 text-center font-medium mb-2">{message}</p>}
+
+        {!showOtpForm ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleRegister();
+            }}
+            className="space-y-4"
+          >
+            <input
+              type="text"
+              name="first_name"
+              placeholder="First Name"
+              value={formData.first_name}
+              onChange={handleChange}
+              required
+              className="w-full p-2 border rounded-md"
+            />
+            <input
+              type="text"
+              name="last_name"
+              placeholder="Last Name"
+              value={formData.last_name}
+              onChange={handleChange}
+              required
+              className="w-full p-2 border rounded-md"
+            />
+            <input
+              type="date"
+              name="dob"
+              value={formData.dob}
+              onChange={handleChange}
+              required
+              className="w-full p-2 border rounded-md"
+            />
+            <select
+              name="gender"
+              value={formData.gender}
+              onChange={handleChange}
+              required
+              className="w-full p-2 border rounded-md"
+            >
+              <option value="">Select Gender</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+            </select>
+            <input
+              type="email"
+              name="email_address"
+              placeholder="Email Address"
+              value={formData.email_address}
+              onChange={handleChange}
+              required
+              className="w-full p-2 border rounded-md"
+            />
+            <input
+              type="text"
+              name="phone_number"
+              placeholder="Phone Number"
+              value={formData.phone_number}
+              onChange={handleChange}
+              required
+              className="w-full p-2 border rounded-md"
+            />
+            <input
+              type="password"
+              name="password"
+              placeholder="Password"
+              value={formData.password}
+              onChange={handleChange}
+              required
+              className="w-full p-2 border rounded-md"
+            />
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700 disabled:opacity-50"
+            >
+              {loading ? "Registering..." : "Register"}
+            </button>
+          </form>
+        ) : (
+          <div className="space-y-4">
+            <input
+              type="text"
+              placeholder="Enter OTP"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value)}
+              className="w-full p-2 border rounded-md"
+            />
+            <button
+              onClick={handleVerifyOtp}
+              disabled={loading}
+              className="w-full bg-green-600 text-white p-2 rounded-md hover:bg-green-700 disabled:opacity-50"
+            >
+              {loading ? "Verifying OTP..." : "Verify OTP"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

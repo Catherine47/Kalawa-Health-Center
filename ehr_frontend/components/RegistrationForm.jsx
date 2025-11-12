@@ -34,7 +34,7 @@ const RegistrationForm = ({ role = "patient" }) => {
       let endpoint;
       if (role === "patient") endpoint = "http://localhost:5000/api/patients/register";
       if (role === "doctor") endpoint = "http://localhost:5000/api/doctors/register";
-      if (role === "admin") endpoint = "http://localhost:5000/admin/register";
+      if (role === "admin") endpoint = "http://localhost:5000/api/admin/register";
 
       // Prepare payload
       const payload = { ...formData };

@@ -2,7 +2,7 @@ import type React from "react"
 import type { Metadata } from "next"
 import { GeistSans } from "geist/font/sans"
 import { GeistMono } from "geist/font/mono"
-import { Analytics } from "@vercel/analytics/next"
+// import { Analytics } from "@vercel/analytics/next"
 import { Suspense } from "react"
 import { ChatbotProvider } from "@/components/chatbot-provider"
 import { AuthProvider } from "@/lib/auth-context"
@@ -26,7 +26,7 @@ export default function RootLayout({
           <Suspense fallback={null}>{children}</Suspense>
           <ChatbotProvider />
         </AuthProvider>
-        <Analytics />
+        {/* <Analytics /> */}
       </body>
     </html>
   )

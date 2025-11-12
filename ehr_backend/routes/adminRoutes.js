@@ -46,17 +46,17 @@ router.post("/register", async (req, res) => {
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
-    const otp_code = generateOTP();
+    const otp = generateOTP(); // updated
 
     const result = await pool.query(
       `INSERT INTO admins 
-        (first_name, last_name, username, password, email_address, otp_code, is_verified, deleted_at, created_at, updated_at)
+        (first_name, last_name, username, password, email_address, otp, is_verified, deleted_at, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, FALSE, NULL, NOW(), NOW())
        RETURNING admin_id, first_name, last_name, email_address, is_verified`,
-      [first_name, last_name, username, hashedPassword, email_address, otp_code]
+      [first_name, last_name, username, hashedPassword, email_address, otp]
     );
 
-    await sendOTPEmail(email_address, otp_code, "Admin");
+    await sendOTPEmail(email_address, otp, "Admin"); // updated
 
     res.status(201).json({
       message: "✅ Admin registered successfully. OTP sent to email.",
@@ -86,13 +86,13 @@ router.post("/resend-otp", async (req, res) => {
     if (result.rows.length === 0)
       return res.status(404).json({ error: "Admin not found" });
 
-    const otp_code = generateOTP();
+    const otp = generateOTP(); // updated
     await pool.query(
-      "UPDATE admins SET otp_code = $1, updated_at = NOW() WHERE email_address = $2",
-      [otp_code, email_address]
+      "UPDATE admins SET otp = $1, updated_at = NOW() WHERE email_address = $2",
+      [otp, email_address]
     );
 
-    await sendOTPEmail(email_address, otp_code, "Admin");
+    await sendOTPEmail(email_address, otp, "Admin"); // updated
 
     res.json({ message: "✅ OTP resent successfully" });
   } catch (err) {
@@ -102,9 +102,9 @@ router.post("/resend-otp", async (req, res) => {
 });
 
 // ------------------------ VERIFY OTP ------------------------
-router.post("/verify-otp", async (req, res) => {
-  const { email_address, otp_code } = req.body;
-  if (!email_address || !otp_code)
+router.post("/verify", async (req, res) => {
+  const { email_address, otp } = req.body; // updated
+  if (!email_address || !otp)
     return res.status(400).json({ error: "Email and OTP are required" });
 
   try {
@@ -117,14 +117,15 @@ router.post("/verify-otp", async (req, res) => {
       return res.status(404).json({ error: "Admin not found" });
 
     const admin = result.rows[0];
+
     if (admin.is_verified)
       return res.json({ message: "Admin already verified." });
 
-    if (admin.otp_code !== otp_code)
+    if (admin.otp !== otp)
       return res.status(400).json({ error: "Invalid OTP" });
 
     await pool.query(
-      "UPDATE admins SET is_verified = TRUE, otp_code = NULL, updated_at = NOW() WHERE admin_id = $1",
+      "UPDATE admins SET is_verified = TRUE, otp = NULL, updated_at = NOW() WHERE admin_id = $1",
       [admin.admin_id]
     );
 
@@ -297,7 +298,7 @@ router.get("/reports/summary", authenticate, async (req, res) => {
     const [patientCount, doctorCount, appointmentCount] = await Promise.all([
       pool.query("SELECT COUNT(*) FROM patients WHERE is_deleted = false"),
       pool.query("SELECT COUNT(*) FROM doctors WHERE is_deleted = false"),
-      pool.query("SELECT COUNT(*) FROM appointments") // assumes appointments table
+      pool.query("SELECT COUNT(*) FROM appointments")
     ]);
 
     res.json({

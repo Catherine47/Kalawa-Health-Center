@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -42,7 +41,7 @@ export default function LoginPage() {
   const [error, setError] = useState("")
   const [showTwoFactor, setShowTwoFactor] = useState(false)
   const [passwordStrength, setPasswordStrength] = useState({ score: 0, feedback: "" })
-  const { login, isLoading } = useAuth()
+  const { login, isLoading, user } = useAuth() // <-- include `user` from context
   const router = useRouter()
 
   const validatePasswordStrength = (password: string) => {
@@ -98,6 +97,7 @@ export default function LoginPage() {
     e.preventDefault()
     setError("")
 
+    // password strength enforcement (optional)
     if (formData.password) {
       const strength = validatePasswordStrength(formData.password)
       if (strength.score < 3) {
@@ -107,26 +107,55 @@ export default function LoginPage() {
     }
 
     if (!showTwoFactor) {
-      // First step: validate credentials and request 2FA
-      const success = await login(formData.email_address, formData.password, activeRole)
+      try {
+        // call context login (returns boolean in your auth-context)
+        const success = await login(formData.email_address, formData.password, activeRole)
 
-      if (success) {
+        if (!success) {
+          setError("Invalid email or password. Please try again.")
+          return
+        }
+
+        // try to read user from context first
+        let loggedUser = user
+
+        // if context not yet updated, fallback to localStorage (auth-context writes there)
+        if (!loggedUser) {
+          try {
+            const raw = localStorage.getItem("user")
+            if (raw) loggedUser = JSON.parse(raw)
+          } catch (err) {
+            // ignore JSON parse errors
+            loggedUser = null
+          }
+        }
+
+        const userId = loggedUser?.id ?? loggedUser?.patientId ?? loggedUser?.userId
+        if (!userId) {
+          // defensive: login succeeded but user data missing
+          setError("Login failed: User data is missing.")
+          return
+        }
+
+        // persist userId (if you need it quickly elsewhere)
+        localStorage.setItem("userId", userId.toString())
+
+        // proceed to 2FA UI
         setShowTwoFactor(true)
         setError("")
         console.log("[v0] 2FA code sent to user")
-      } else {
-        setError("Invalid email address or password. Please try again.")
+      } catch (err: any) {
+        console.error(err)
+        setError(err?.message || "Something went wrong during login. Please try again.")
       }
     } else {
-      // Second step: validate 2FA code
+      // Two-factor verification step (demo)
       if (!formData.twoFactorCode || formData.twoFactorCode.length !== 6) {
         setError("Please enter a valid 6-digit verification code.")
         return
       }
 
-      // Simulate 2FA validation (in real app, this would verify with backend)
       if (formData.twoFactorCode === "123456") {
-        // Redirect based on role
         const redirectPaths = {
           patient: "/dashboard",
           doctor: "/doctor-dashboard",
@@ -165,7 +194,6 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen">
       <Header />
-
       <section className="py-20 bg-gradient-to-br from-primary/10 via-background to-accent/10">
         <div className="container mx-auto px-4">
           <div className="max-w-md mx-auto">
@@ -205,41 +233,36 @@ export default function LoginPage() {
                     : "Select your role and enter your credentials"}
                 </CardDescription>
               </CardHeader>
+
               <CardContent>
                 {!showTwoFactor && (
-                  <>
-                    {/* Role Selection Tabs */}
-                    <Tabs
-                      value={activeRole}
-                      onValueChange={(value) => handleRoleChange(value as UserRole)}
-                      className="mb-6"
-                    >
-                      <TabsList className="grid w-full grid-cols-3">
-                        <TabsTrigger value="patient" className="flex items-center gap-2">
-                          <User className="w-4 h-4" />
-                          Patient
-                        </TabsTrigger>
-                        <TabsTrigger value="doctor" className="flex items-center gap-2">
-                          <Stethoscope className="w-4 h-4" />
-                          Doctor
-                        </TabsTrigger>
-                        <TabsTrigger value="admin" className="flex items-center gap-2">
-                          <Settings className="w-4 h-4" />
-                          Admin
-                        </TabsTrigger>
-                      </TabsList>
+                  <Tabs
+                    value={activeRole}
+                    onValueChange={(value) => handleRoleChange(value as UserRole)}
+                    className="mb-6"
+                  >
+                    <TabsList className="grid w-full grid-cols-3">
+                      <TabsTrigger value="patient" className="flex items-center gap-2">
+                        <User className="w-4 h-4" /> Patient
+                      </TabsTrigger>
+                      <TabsTrigger value="doctor" className="flex items-center gap-2">
+                        <Stethoscope className="w-4 h-4" /> Doctor
+                      </TabsTrigger>
+                      <TabsTrigger value="admin" className="flex items-center gap-2">
+                        <Settings className="w-4 h-4" /> Admin
+                      </TabsTrigger>
+                    </TabsList>
 
-                      <TabsContent value={activeRole} className="mt-4">
-                        <div className="text-center p-4 bg-muted/50 rounded-lg">
-                          <div className="flex items-center justify-center gap-2 mb-2">
-                            <currentConfig.icon className="w-5 h-5 text-primary" />
-                            <span className="font-semibold">{currentConfig.title}</span>
-                          </div>
-                          <p className="text-sm text-muted-foreground">{currentConfig.description}</p>
+                    <TabsContent value={activeRole} className="mt-4">
+                      <div className="text-center p-4 bg-muted/50 rounded-lg">
+                        <div className="flex items-center justify-center gap-2 mb-2">
+                          <currentConfig.icon className="w-5 h-5 text-primary" />
+                          <span className="font-semibold">{currentConfig.title}</span>
                         </div>
-                      </TabsContent>
-                    </Tabs>
-                  </>
+                        <p className="text-sm text-muted-foreground">{currentConfig.description}</p>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-6">
@@ -295,6 +318,8 @@ export default function LoginPage() {
                             )}
                           </Button>
                         </div>
+
+                        {/* password strength bars */}
                         {formData.password && (
                           <div className="space-y-1">
                             <div className="flex gap-1">
@@ -306,8 +331,8 @@ export default function LoginPage() {
                                       ? passwordStrength.score <= 2
                                         ? "bg-red-500"
                                         : passwordStrength.score <= 3
-                                          ? "bg-yellow-500"
-                                          : "bg-green-500"
+                                        ? "bg-yellow-500"
+                                        : "bg-green-500"
                                       : "bg-muted"
                                   }`}
                                 />
@@ -394,7 +419,6 @@ export default function LoginPage() {
                     </>
                   )}
 
-                  {/* Show registration link for all roles */}
                   {!showTwoFactor && (
                     <div className="text-center space-y-4">
                       <div className="relative">

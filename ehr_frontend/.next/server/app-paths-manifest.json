@@ -1,19 +1,7 @@
 {
-  "/_global-error/page": "app/_global-error/page.js",
-  "/_not-found/page": "app/_not-found/page.js",
-  "/about/page": "app/about/page.js",
-  "/admin-dashboard/page": "app/admin-dashboard/page.js",
-  "/appointments/page": "app/appointments/page.js",
-  "/chat/page": "app/chat/page.js",
-  "/contact/page": "app/contact/page.js",
-  "/dashboard/page": "app/dashboard/page.js",
-  "/departments/page": "app/departments/page.js",
-  "/doctor-dashboard/page": "app/doctor-dashboard/page.js",
-  "/facilities/page": "app/facilities/page.js",
-  "/forgot-password/page": "app/forgot-password/page.js",
+  "/verify-otp/page": "app/verify-otp/page.js",
   "/login/page": "app/login/page.js",
-  "/page": "app/page.js",
-  "/register/page": "app/register/page.js",
   "/services/page": "app/services/page.js",
-  "/verify-otp/page": "app/verify-otp/page.js"
+  "/admin-dashboard/page": "app/admin-dashboard/page.js",
+  "/page": "app/page.js"
 }

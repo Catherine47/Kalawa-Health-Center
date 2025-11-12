@@ -1,4 +1,4 @@
-// ✅ server.js — Final Production-Ready Version
+// ✅ server.js — Updated Production-Ready Version
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -8,6 +8,23 @@ import { pool } from "./db.js";
 // ✅ Load environment variables
 dotenv.config();
 
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+// ✅ CORS Configuration (fixed)
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true, // allow cookies or credentials
+  })
+);
+
+// ✅ Middleware setup
+app.use(express.json());
+app.use(morgan("dev"));
+
 // ✅ Import route files
 import adminRoutes from "./routes/adminRoutes.js";
 import doctorRoutes from "./routes/doctorRoutes.js";
@@ -15,21 +32,7 @@ import patientRoutes from "./routes/patientRoutes.js";
 import appointmentRoutes from "./routes/appointmentRoutes.js";
 import prescriptionRoutes from "./routes/prescriptionRoutes.js";
 import prescriptionDrugsRoutes from "./routes/prescriptionDrugsRoutes.js";
-import authRoutes from "./routes/authRoutes.js"; // ✅ Include your OTP/auth route
-
-const app = express();
-const PORT = process.env.PORT || 5000;
-
-// ✅ Middleware setup
-app.use(
-  cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
-app.use(express.json());
-app.use(morgan("dev"));
+import authRoutes from "./routes/authRoutes.js"; // ✅ OTP/auth route
 
 // ✅ Root route
 app.get("/", (req, res) => {
@@ -51,18 +54,23 @@ app.get("/test", async (req, res) => {
   }
 });
 
-// ✅ Register all routes
-app.use("/api/admins", adminRoutes);
+// ✅ Register routes (ensure all exist)
+app.use("/api/admin", adminRoutes);
 app.use("/api/doctors", doctorRoutes);
 app.use("/api/patients", patientRoutes);
 app.use("/api/appointments", appointmentRoutes);
 app.use("/api/prescriptions", prescriptionRoutes);
 app.use("/api/prescription_drugs", prescriptionDrugsRoutes);
-app.use("/api/auth", authRoutes); // ✅ OTP verification endpoint
+app.use("/api/auth", authRoutes);
 
-// ✅ 404 handler (unknown routes)
-app.use((req, res) => {
-  res.status(404).json({ message: "❌ Route not found" });
+// ✅ Catch-all route (for debugging 404s)
+app.use((req, res, next) => {
+  console.warn(`⚠️ Route not found: ${req.method} ${req.originalUrl}`);
+  res.status(404).json({
+    message: "❌ Route not found",
+    route: req.originalUrl,
+    method: req.method,
+  });
 });
 
 // ✅ Global error handler
@@ -79,7 +87,9 @@ app.use((err, req, res, next) => {
 
     app.listen(PORT, () => {
       console.log(`🚀 Server running at: http://localhost:${PORT}`);
-      console.log(`🌐 Allowed frontend: ${process.env.FRONTEND_URL || "http://localhost:3000"}`);
+      console.log(
+        `🌐 Allowed frontend: ${process.env.FRONTEND_URL || "http://localhost:3000"}`
+      );
     });
   } catch (err) {
     console.error("❌ Database connection failed. Server not started:", err.message);

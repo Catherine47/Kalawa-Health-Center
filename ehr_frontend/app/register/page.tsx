@@ -5,31 +5,15 @@ import { apiCall } from "@/lib/api-client"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Header } from "@/components/header"
-import { Footer } from "@/components/footer"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { OTPService } from "@/lib/otp-service"
-import {
-  Heart,
-  User,
-  Mail,
-  Lock,
-  Phone,
-  Eye,
-  EyeOff,
-  Shield,
-  AlertCircle,
-  CheckCircle,
-  Stethoscope,
-  Settings,
-} from "lucide-react"
+import { Eye, EyeOff, AlertCircle, User, Stethoscope, Settings } from "lucide-react"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -40,14 +24,14 @@ export default function RegisterPage() {
     last_name: "",
     email_address: "",
     phone_number: "",
-    dob: "", // Added DOB field for patient
-    gender: "", // Added gender field for patient
+    dob: "",
+    gender: "",
     password: "",
     confirmPassword: "",
     agreeToTerms: false,
     agreeToPrivacy: false,
-    specialization: "", // For doctors
-    username: "", // For admins
+    specialization: "",
+    username: "",
   })
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -165,471 +149,263 @@ export default function RegisterPage() {
         }),
       }
 
-      console.log("[v0] Registering user:", { role, ...registrationData })
+      const endpoint = role === "admin" ? "/api/admin/register" : `/api/${role}s/register`
 
-      // Call backend registration endpoint
-      const registerResponse = await apiCall(`/api/${role}s/register`, {
+      const registerResponse = await apiCall(endpoint, {
         method: "POST",
         body: JSON.stringify(registrationData),
       })
 
       console.log("[v0] Registration successful:", registerResponse)
 
-      // Now send OTP
-      const otpResult = await OTPService.sendOTP(formData.email_address, "registration")
-
-      if (otpResult.success) {
-        // Redirect to OTP verification page with email, purpose, and role
-        router.push(`/verify-otp?email=${encodeURIComponent(formData.email_address)}&purpose=registration&role=${role}`)
-      } else {
-        setError(otpResult.message)
-      }
+      router.push(`/verify-otp?email=${encodeURIComponent(formData.email_address)}&purpose=registration&role=${role}`)
     } catch (err) {
-      console.error("[v0] Registration error:", err)
-      setError(err instanceof Error ? err.message : "Registration failed. Please try again.")
+      console.error("[v0] Registration failed:", err)
+      setError("Registration failed. Please try again.")
     } finally {
       setIsLoading(false)
     }
   }
 
-  const getRoleConfig = () => {
-    switch (role) {
-      case "doctor":
-        return {
-          title: "Doctor Registration",
-          description: "Register as a healthcare professional",
-          icon: Stethoscope,
-          email: "doctor@kalawa.go.ke",
-          color: "text-blue-600",
-          bgColor: "bg-blue-50 dark:bg-blue-950",
-        }
-      case "admin":
-        return {
-          title: "Admin Registration",
-          description: "Register as a system administrator",
-          icon: Settings,
-          email: "admin@kalawa.go.ke",
-          color: "text-purple-600",
-          bgColor: "bg-purple-50 dark:bg-purple-950",
-        }
-      default:
-        return {
-          title: "Patient Registration",
-          description: "Register as a patient",
-          icon: Heart,
-          email: "patient@kalawa.go.ke",
-          color: "text-red-600",
-          bgColor: "bg-red-50 dark:bg-red-950",
-        }
-    }
-  }
-
-  const config = getRoleConfig()
-  const IconComponent = config.icon
-
   return (
-    <div className="min-h-screen">
-      <Header />
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-accent/10 py-20">
+      <div className="container mx-auto px-4">
+        <div className="max-w-md mx-auto">
+          {/* Role Selection Tabs */}
+          <div className="mb-6">
+            <Tabs value={role} onValueChange={(value) => setRole(value as any)}>
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="patient" className="flex items-center gap-2">
+                  <User className="w-4 h-4" />
+                  <span className="hidden sm:inline">Patient</span>
+                </TabsTrigger>
+                <TabsTrigger value="doctor" className="flex items-center gap-2">
+                  <Stethoscope className="w-4 h-4" />
+                  <span className="hidden sm:inline">Doctor</span>
+                </TabsTrigger>
+                <TabsTrigger value="admin" className="flex items-center gap-2">
+                  <Settings className="w-4 h-4" />
+                  <span className="hidden sm:inline">Admin</span>
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
 
-      <section className="py-20 bg-gradient-to-br from-primary/10 via-background to-accent/10">
-        <div className="container mx-auto px-4">
-          <div className="max-w-2xl mx-auto">
-            {/* Header */}
-            <div className="text-center space-y-4 mb-8">
-              <div className="flex items-center justify-center gap-2">
-                <div className="flex items-center justify-center w-12 h-12 bg-primary rounded-lg">
-                  <Heart className="h-6 w-6 text-primary-foreground" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-xl font-bold text-primary">Kalawa Health Center</span>
-                  <span className="text-xs text-muted-foreground">Registration Portal</span>
-                </div>
-              </div>
-              <Badge variant="secondary" className="w-fit mx-auto">
-                Create Account
-              </Badge>
-              <h1 className="text-3xl font-bold text-balance">Join Kalawa Health Center</h1>
-              <p className="text-muted-foreground">Create your account to access our healthcare services</p>
-            </div>
-
-            <div className="flex gap-4 mb-8 justify-center flex-wrap">
-              {[
-                { value: "patient" as const, label: "Patient", icon: User },
-                { value: "doctor" as const, label: "Doctor", icon: Stethoscope },
-                { value: "admin" as const, label: "Admin", icon: Settings },
-              ].map((r) => {
-                const Icon = r.icon
-                return (
-                  <button
-                    key={r.value}
-                    onClick={() => {
-                      setRole(r.value)
-                      setStep(1)
-                      setError("")
-                    }}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-all ${
-                      role === r.value
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border bg-background text-muted-foreground hover:border-primary/50"
-                    }`}
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span className="font-medium">{r.label}</span>
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Progress Indicator */}
-            <div className="flex items-center justify-center mb-8">
-              <div className="flex items-center gap-4">
-                <div className={`flex items-center gap-2 ${step >= 1 ? "text-primary" : "text-muted-foreground"}`}>
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                      step >= 1 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {step > 1 ? <CheckCircle className="w-4 h-4" /> : "1"}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-2xl text-center">Create Account</CardTitle>
+              <CardDescription className="text-center">
+                {step === 1 ? "Enter your personal information" : "Set up your password"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {step === 1 && (
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="first_name">First Name</Label>
+                    <Input
+                      id="first_name"
+                      value={formData.first_name}
+                      onChange={(e) => handleInputChange("first_name", e.target.value)}
+                    />
                   </div>
-                  <span className="text-sm font-medium">Personal Info</span>
-                </div>
-                <div className={`w-8 h-px ${step >= 2 ? "bg-primary" : "bg-muted"}`} />
-                <div className={`flex items-center gap-2 ${step >= 2 ? "text-primary" : "text-muted-foreground"}`}>
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                      step >= 2 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    2
+                  <div>
+                    <Label htmlFor="last_name">Last Name</Label>
+                    <Input
+                      id="last_name"
+                      value={formData.last_name}
+                      onChange={(e) => handleInputChange("last_name", e.target.value)}
+                    />
                   </div>
-                  <span className="text-sm font-medium">Security</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Registration Form */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-2xl text-center">
-                  {step === 1 ? "Personal Information" : "Account Security"}
-                </CardTitle>
-                <CardDescription className="text-center">
-                  {step === 1 ? `Please provide your ${role} details` : "Create a secure password for your account"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={step === 1 ? (e) => e.preventDefault() : handleSubmit} className="space-y-6">
+                  <div>
+                    <Label htmlFor="email_address">Email Address</Label>
+                    <Input
+                      id="email_address"
+                      type="email"
+                      value={formData.email_address}
+                      onChange={(e) => handleInputChange("email_address", e.target.value)}
+                    />
+                  </div>
+                  {role === "patient" && (
+                    <>
+                      <div>
+                        <Label htmlFor="phone_number">Phone Number</Label>
+                        <Input
+                          id="phone_number"
+                          value={formData.phone_number}
+                          onChange={(e) => handleInputChange("phone_number", e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="dob">Date of Birth</Label>
+                        <Input
+                          id="dob"
+                          type="date"
+                          value={formData.dob}
+                          onChange={(e) => handleInputChange("dob", e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="gender">Gender</Label>
+                        <Select value={formData.gender} onValueChange={(value) => handleInputChange("gender", value)}>
+                          <SelectTrigger id="gender">
+                            <SelectValue placeholder="Select your gender" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="male">Male</SelectItem>
+                            <SelectItem value="female">Female</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
+                  {role === "doctor" && (
+                    <>
+                      <div>
+                        <Label htmlFor="phone_number">Phone Number</Label>
+                        <Input
+                          id="phone_number"
+                          value={formData.phone_number}
+                          onChange={(e) => handleInputChange("phone_number", e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="specialization">Specialization</Label>
+                        <Input
+                          id="specialization"
+                          value={formData.specialization}
+                          onChange={(e) => handleInputChange("specialization", e.target.value)}
+                        />
+                      </div>
+                    </>
+                  )}
+                  {role === "admin" && (
+                    <div>
+                      <Label htmlFor="username">Username</Label>
+                      <Input
+                        id="username"
+                        value={formData.username}
+                        onChange={(e) => handleInputChange("username", e.target.value)}
+                      />
+                    </div>
+                  )}
                   {error && (
                     <Alert variant="destructive">
                       <AlertCircle className="h-4 w-4" />
                       <AlertDescription>{error}</AlertDescription>
                     </Alert>
                   )}
+                  <Button onClick={handleNext} disabled={isLoading} className="w-full">
+                    Next
+                  </Button>
+                </div>
+              )}
 
-                  {step === 1 && (
-                    <>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="firstName">First Name *</Label>
-                          <div className="relative">
-                            <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                            <Input
-                              id="firstName"
-                              placeholder="John"
-                              value={formData.first_name}
-                              onChange={(e) => handleInputChange("first_name", e.target.value)}
-                              className="pl-10"
-                              required
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="lastName">Last Name *</Label>
-                          <Input
-                            id="lastName"
-                            placeholder="Doe"
-                            value={formData.last_name}
-                            onChange={(e) => handleInputChange("last_name", e.target.value)}
-                            required
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="email">Email Address *</Label>
-                        <div className="relative">
-                          <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            id="email"
-                            type="email"
-                            placeholder={config.email}
-                            value={formData.email_address}
-                            onChange={(e) => handleInputChange("email_address", e.target.value)}
-                            className="pl-10"
-                            required
-                          />
-                        </div>
-                      </div>
-
-                      {(role === "patient" || role === "doctor") && (
-                        <div className="space-y-2">
-                          <Label htmlFor="phone">Phone Number *</Label>
-                          <div className="relative">
-                            <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                            <Input
-                              id="phone"
-                              type="tel"
-                              placeholder="0745 120 283"
-                              value={formData.phone_number}
-                              onChange={(e) => handleInputChange("phone_number", e.target.value)}
-                              className="pl-10"
-                              required
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      {role === "patient" && (
-                        <>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="dob">Date of Birth *</Label>
-                              <Input
-                                id="dob"
-                                type="date"
-                                value={formData.dob}
-                                onChange={(e) => handleInputChange("dob", e.target.value)}
-                                required
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="gender">Gender *</Label>
-                              <Select
-                                value={formData.gender}
-                                onValueChange={(value) => handleInputChange("gender", value)}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select gender" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="male">Male</SelectItem>
-                                  <SelectItem value="female">Female</SelectItem>
-                                  <SelectItem value="other">Other</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-                        </>
-                      )}
-
-                      {role === "doctor" && (
-                        <>
-                          <div className="space-y-2">
-                            <Label>Specialization *</Label>
-                            <Select
-                              value={formData.specialization}
-                              onValueChange={(value) => handleInputChange("specialization", value)}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select specialization" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="cardiology">Cardiology</SelectItem>
-                                <SelectItem value="neurology">Neurology</SelectItem>
-                                <SelectItem value="orthopedics">Orthopedics</SelectItem>
-                                <SelectItem value="pediatrics">Pediatrics</SelectItem>
-                                <SelectItem value="general">General Practice</SelectItem>
-                                <SelectItem value="dermatology">Dermatology</SelectItem>
-                                <SelectItem value="psychiatry">Psychiatry</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </>
-                      )}
-
-                      {role === "admin" && (
-                        <div className="space-y-2">
-                          <Label htmlFor="username">Username *</Label>
-                          <div className="relative">
-                            <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                            <Input
-                              id="username"
-                              placeholder="Enter your username"
-                              value={formData.username}
-                              onChange={(e) => handleInputChange("username", e.target.value)}
-                              className="pl-10"
-                              required
-                            />
-                          </div>
-                        </div>
-                      )}
-                      {/* End of update */}
-
-                      <Button type="button" size="lg" className="w-full" onClick={handleNext}>
-                        Continue
+              {step === 2 && (
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="password">Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        type={showPassword ? "text" : "password"}
+                        value={formData.password}
+                        onChange={(e) => handleInputChange("password", e.target.value)}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-0 top-0"
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
-                    </>
-                  )}
-
-                  {step === 2 && (
-                    <>
-                      <div className="space-y-2">
-                        <Label htmlFor="password">Password *</Label>
-                        <div className="relative">
-                          <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            id="password"
-                            type={showPassword ? "text" : "password"}
-                            placeholder="Create a strong password"
-                            value={formData.password}
-                            onChange={(e) => handleInputChange("password", e.target.value)}
-                            className="pl-10 pr-10"
-                            required
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                            onClick={() => setShowPassword(!showPassword)}
-                          >
-                            {showPassword ? (
-                              <EyeOff className="h-4 w-4 text-muted-foreground" />
-                            ) : (
-                              <Eye className="h-4 w-4 text-muted-foreground" />
-                            )}
-                          </Button>
-                        </div>
-                        <div className="text-xs text-muted-foreground space-y-1">
-                          <p className="font-medium">Password must contain:</p>
-                          <ul className="space-y-1 ml-2">
-                            <li
-                              className={`flex items-center gap-2 ${formData.password.length >= 8 ? "text-green-600" : "text-muted-foreground"}`}
-                            >
-                              <span className="w-1 h-1 rounded-full bg-current"></span>
-                              At least 8 characters
-                            </li>
-                            <li
-                              className={`flex items-center gap-2 ${/[a-zA-Z]/.test(formData.password) ? "text-green-600" : "text-muted-foreground"}`}
-                            >
-                              <span className="w-1 h-1 rounded-full bg-current"></span>
-                              Letters (a-z, A-Z)
-                            </li>
-                            <li
-                              className={`flex items-center gap-2 ${/\d/.test(formData.password) ? "text-green-600" : "text-muted-foreground"}`}
-                            >
-                              <span className="w-1 h-1 rounded-full bg-current"></span>
-                              Numbers (0-9)
-                            </li>
-                            <li
-                              className={`flex items-center gap-2 ${/[!@#$%^&*(),.?":{}|<>]/.test(formData.password) ? "text-green-600" : "text-muted-foreground"}`}
-                            >
-                              <span className="w-1 h-1 rounded-full bg-current"></span>
-                              Special characters (!@#$%^&*)
-                            </li>
-                          </ul>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="confirmPassword">Confirm Password *</Label>
-                        <div className="relative">
-                          <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            id="confirmPassword"
-                            type={showConfirmPassword ? "text" : "password"}
-                            placeholder="Confirm your password"
-                            value={formData.confirmPassword}
-                            onChange={(e) => handleInputChange("confirmPassword", e.target.value)}
-                            className="pl-10 pr-10"
-                            required
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                          >
-                            {showConfirmPassword ? (
-                              <EyeOff className="h-4 w-4 text-muted-foreground" />
-                            ) : (
-                              <Eye className="h-4 w-4 text-muted-foreground" />
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div className="space-y-4">
-                        <div className="flex items-start space-x-2">
-                          <Checkbox
-                            id="terms"
-                            checked={formData.agreeToTerms}
-                            onCheckedChange={(checked) => handleInputChange("agreeToTerms", checked as boolean)}
-                          />
-                          <Label htmlFor="terms" className="text-sm leading-relaxed">
-                            I agree to the{" "}
-                            <Link href="/terms" className="text-primary hover:underline">
-                              Terms of Service
-                            </Link>
-                          </Label>
-                        </div>
-                        <div className="flex items-start space-x-2">
-                          <Checkbox
-                            id="privacy"
-                            checked={formData.agreeToPrivacy}
-                            onCheckedChange={(checked) => handleInputChange("agreeToPrivacy", checked as boolean)}
-                          />
-                          <Label htmlFor="privacy" className="text-sm leading-relaxed">
-                            I agree to the{" "}
-                            <Link href="/privacy" className="text-primary hover:underline">
-                              Privacy Policy
-                            </Link>
-                          </Label>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-4">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="lg"
-                          className="flex-1 bg-transparent"
-                          onClick={handleBack}
-                        >
-                          Back
-                        </Button>
-                        <Button type="submit" size="lg" className="flex-1" disabled={isLoading}>
-                          {isLoading ? "Creating Account..." : "Create Account"}
-                        </Button>
-                      </div>
-                    </>
-                  )}
-
-                  <div className="text-center">
-                    <p className="text-sm text-muted-foreground">
-                      Already have an account?{" "}
-                      <Link href="/login" className="text-primary hover:underline font-medium">
-                        Sign in
-                      </Link>
-                    </p>
+                    </div>
                   </div>
-                </form>
-              </CardContent>
-            </Card>
+                  <div>
+                    <Label htmlFor="confirmPassword">Confirm Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="confirmPassword"
+                        type={showConfirmPassword ? "text" : "password"}
+                        value={formData.confirmPassword}
+                        onChange={(e) => handleInputChange("confirmPassword", e.target.value)}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-0 top-0"
+                      >
+                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="text-sm text-muted-foreground space-y-1">
+                    <p className="font-medium">Password must contain:</p>
+                    <ul className="list-disc list-inside space-y-1">
+                      <li>At least 8 characters</li>
+                      <li>Letters (a-z, A-Z)</li>
+                      <li>Numbers (0-9)</li>
+                      <li>Special characters (!@#$%^&*)</li>
+                    </ul>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="agreeToTerms"
+                      checked={formData.agreeToTerms}
+                      onCheckedChange={(checked) => handleInputChange("agreeToTerms", checked)}
+                    />
+                    <Label htmlFor="agreeToTerms" className="text-sm">
+                      I agree to the terms and conditions
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="agreeToPrivacy"
+                      checked={formData.agreeToPrivacy}
+                      onCheckedChange={(checked) => handleInputChange("agreeToPrivacy", checked)}
+                    />
+                    <Label htmlFor="agreeToPrivacy" className="text-sm">
+                      I agree to the privacy policy
+                    </Label>
+                  </div>
+                  {error && (
+                    <Alert variant="destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={handleBack}
+                      disabled={isLoading}
+                      variant="outline"
+                      className="flex-1 bg-transparent"
+                    >
+                      Back
+                    </Button>
+                    <Button onClick={handleSubmit} disabled={isLoading} className="flex-1">
+                      {isLoading ? "Creating..." : "Create Account"}
+                    </Button>
+                  </div>
+                </div>
+              )}
 
-            {/* Security Notice */}
-            <div className="mt-8 text-center">
-              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                <Shield className="h-4 w-4" />
-                <span>Your information is protected with enterprise-grade security</span>
+              {/* Sign in link */}
+              <div className="text-center mt-4">
+                <p className="text-sm text-muted-foreground">
+                  Already have an account?{" "}
+                  <Link href="/login" className="text-primary hover:underline font-medium">
+                    Sign in
+                  </Link>
+                </p>
               </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         </div>
-      </section>
-
-      <Footer />
+      </div>
     </div>
   )
 }

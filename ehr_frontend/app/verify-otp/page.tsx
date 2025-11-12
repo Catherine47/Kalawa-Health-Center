@@ -12,13 +12,13 @@ import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { OTPInput } from "@/components/otp-input"
-import { OTPService } from "@/lib/otp-service"
 import { Heart, Shield, Mail, Clock, AlertCircle, CheckCircle, RefreshCw } from "lucide-react"
 
 export default function VerifyOTPPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const email = searchParams.get("email") || ""
+  const role = searchParams.get("role") || "patient" // added role parameter
   const purpose = (searchParams.get("purpose") as "registration" | "login" | "password-reset") || "registration"
 
   const [otp, setOtp] = useState("")
@@ -40,17 +40,21 @@ export default function VerifyOTPPage() {
 
   // Check if OTP is pending for this email
   useEffect(() => {
-    if (email && OTPService.isOTPPending(email)) {
-      const expiryTime = OTPService.getOTPExpiryTime(email)
-      if (expiryTime) {
+    if (email) {
+      // Placeholder for checking OTP pending status from backend
+      // This should be replaced with actual backend call
+      const isOTPPending = true // Assume OTP is pending for demonstration
+      const expiryTime = new Date(Date.now() + 600 * 1000) // Assume expiry time is 10 minutes from now
+
+      if (isOTPPending) {
         const remainingTime = Math.max(0, Math.floor((expiryTime.getTime() - Date.now()) / 1000))
         setTimeLeft(remainingTime)
         setCanResend(remainingTime === 0)
+      } else {
+        // No pending OTP, allow immediate resend
+        setCanResend(true)
+        setTimeLeft(0)
       }
-    } else if (email) {
-      // No pending OTP, allow immediate resend
-      setCanResend(true)
-      setTimeLeft(0)
     }
   }, [email])
 
@@ -77,24 +81,37 @@ export default function VerifyOTPPage() {
     setError("")
 
     try {
-      const result = await OTPService.verifyOTP(email, otp)
+      // ✅ Determine endpoint based on role
+      const endpoint =
+        role === "admin"
+          ? "http://localhost:5000/api/admin/verify"
+          : `http://localhost:5000/api/${role}s/verify`
 
-      if (result.success) {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email_address: email, otp }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setError(data.message || "Verification failed. Please try again.")
+        return
+      }
+
+      if (data.success) {
         setSuccess(true)
         setTimeout(() => {
-          // Redirect based on purpose
-          if (purpose === "registration") {
-            router.push("/login?verified=true")
-          } else if (purpose === "password-reset") {
-            router.push(`/reset-password?email=${encodeURIComponent(email)}`)
-          } else {
-            router.push("/dashboard")
-          }
-        }, 2000)
+          if (purpose === "registration") router.push("/login?verified=true")
+          else if (purpose === "password-reset") router.push(`/reset-password?email=${encodeURIComponent(email)}`)
+          else router.push("/dashboard")
+        }, 1500)
       } else {
-        setError(result.message)
+        setError(data.message || "Verification failed. Please try again.")
       }
     } catch (err) {
+      console.error("[OTP Verification Error]", err)
       setError("Verification failed. Please try again.")
     } finally {
       setIsLoading(false)
@@ -112,17 +129,30 @@ export default function VerifyOTPPage() {
     setCanResend(false)
 
     try {
-      const result = await OTPService.resendOTP(email, purpose)
+      // ✅ Determine endpoint based on role
+      const endpoint =
+        role === "admin"
+          ? "http://localhost:5000/api/admin/resend-otp"
+          : `http://localhost:5000/api/${role}s/resend-otp`
 
-      if (result.success) {
-        setTimeLeft(600) // Reset to 10 minutes
-        setOtp("") // Clear current input
-        // Success message is handled by the service
-      } else {
-        setError(result.message)
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email_address: email }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        setError(result.message || "Failed to resend code. Please try again.")
         setCanResend(true)
+        return
       }
+
+      setTimeLeft(600) // Reset timer
+      setOtp("") // Clear input
     } catch (err) {
+      console.error("[OTP Resend Error]", err)
       setError("Failed to resend code. Please try again.")
       setCanResend(true)
     } finally {
@@ -148,15 +178,15 @@ export default function VerifyOTPPage() {
                         {purpose === "registration"
                           ? "Email Verified!"
                           : purpose === "password-reset"
-                            ? "Verification Complete!"
-                            : "Login Successful!"}
+                          ? "Verification Complete!"
+                          : "Login Successful!"}
                       </h1>
                       <p className="text-muted-foreground">
                         {purpose === "registration"
                           ? "Your email has been successfully verified. You can now sign in to your account."
                           : purpose === "password-reset"
-                            ? "You can now reset your password."
-                            : "Welcome back! Redirecting to your dashboard..."}
+                          ? "You can now reset your password."
+                          : "Welcome back! Redirecting to your dashboard..."}
                       </p>
                     </div>
                     <Button asChild size="lg" className="w-full">
@@ -178,7 +208,6 @@ export default function VerifyOTPPage() {
   return (
     <div className="min-h-screen">
       <Header />
-
       <section className="py-20 bg-gradient-to-br from-primary/10 via-background to-accent/10">
         <div className="container mx-auto px-4">
           <div className="max-w-md mx-auto">
@@ -285,7 +314,6 @@ export default function VerifyOTPPage() {
           </div>
         </div>
       </section>
-
       <Footer />
     </div>
   )
