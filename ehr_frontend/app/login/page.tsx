@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState } from "react" // ✅ Removed useEffect since we don't need auto-fill
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Header } from "@/components/header"
@@ -14,7 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useAuth, type UserRole } from "@/lib/auth-context"
+import { useAuth, type UserRole } from "@/context/auth-context"
 import {
   Heart,
   Mail,
@@ -26,22 +26,19 @@ import {
   User,
   Stethoscope,
   Settings,
-  Smartphone,
 } from "lucide-react"
 
 export default function LoginPage() {
   const [activeRole, setActiveRole] = useState<UserRole>("patient")
   const [formData, setFormData] = useState({
-    email_address: "",
+    email_address: "", // ✅ Always start with empty fields
     password: "",
     rememberMe: false,
-    twoFactorCode: "",
   })
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
-  const [showTwoFactor, setShowTwoFactor] = useState(false)
   const [passwordStrength, setPasswordStrength] = useState({ score: 0, feedback: "" })
-  const { login, isLoading, user } = useAuth() // <-- include `user` from context
+  const { login, isLoading } = useAuth()
   const router = useRouter()
 
   const validatePasswordStrength = (password: string) => {
@@ -54,17 +51,11 @@ export default function LoginPage() {
     if (/\d/.test(password)) score++
     if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) score++
 
-    if (password.length < 8) {
-      feedback = "Password must be at least 8 characters"
-    } else if (score < 3) {
-      feedback = "Weak - Add uppercase, numbers, and special characters"
-    } else if (score < 4) {
-      feedback = "Medium - Add more character types"
-    } else if (score === 4) {
-      feedback = "Strong - Consider adding special characters"
-    } else {
-      feedback = "Very Strong"
-    }
+    if (password.length < 8) feedback = "Password must be at least 8 characters"
+    else if (score < 3) feedback = "Weak - Add uppercase, numbers, and special characters"
+    else if (score < 4) feedback = "Medium - Add more character types"
+    else if (score === 4) feedback = "Strong - Consider adding special characters"
+    else feedback = "Very Strong"
 
     return { score, feedback }
   }
@@ -72,32 +63,23 @@ export default function LoginPage() {
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
     setError("")
-
     if (field === "password" && typeof value === "string") {
       setPasswordStrength(validatePasswordStrength(value))
     }
   }
 
+  // ✅ SIMPLE: Only change the role, don't touch the form data
   const handleRoleChange = (role: UserRole) => {
     setActiveRole(role)
     setError("")
-    setShowTwoFactor(false)
-    const defaultCredentials = {
-      patient: { email_address: "patient@kalawa.go.ke" },
-      doctor: { email_address: "doctor@kalawa.go.ke" },
-      admin: { email_address: "admin@kalawa.go.ke" },
-    }
-    setFormData((prev) => ({
-      ...prev,
-      email_address: defaultCredentials[role].email_address,
-    }))
+    // ✅ NO AUTO-FILL - user can type freely
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
 
-    // password strength enforcement (optional)
+    // Optional password strength check
     if (formData.password) {
       const strength = validatePasswordStrength(formData.password)
       if (strength.score < 3) {
@@ -106,65 +88,24 @@ export default function LoginPage() {
       }
     }
 
-    if (!showTwoFactor) {
-      try {
-        // call context login (returns boolean in your auth-context)
-        const success = await login(formData.email_address, formData.password, activeRole)
+    try {
+      const success = await login(formData.email_address, formData.password, activeRole)
 
-        if (!success) {
-          setError("Invalid email or password. Please try again.")
-          return
-        }
-
-        // try to read user from context first
-        let loggedUser = user
-
-        // if context not yet updated, fallback to localStorage (auth-context writes there)
-        if (!loggedUser) {
-          try {
-            const raw = localStorage.getItem("user")
-            if (raw) loggedUser = JSON.parse(raw)
-          } catch (err) {
-            // ignore JSON parse errors
-            loggedUser = null
-          }
-        }
-
-        const userId = loggedUser?.id ?? loggedUser?.patientId ?? loggedUser?.userId
-        if (!userId) {
-          // defensive: login succeeded but user data missing
-          setError("Login failed: User data is missing.")
-          return
-        }
-
-        // persist userId (if you need it quickly elsewhere)
-        localStorage.setItem("userId", userId.toString())
-
-        // proceed to 2FA UI
-        setShowTwoFactor(true)
-        setError("")
-        console.log("[v0] 2FA code sent to user")
-      } catch (err: any) {
-        console.error(err)
-        setError(err?.message || "Something went wrong during login. Please try again.")
-      }
-    } else {
-      // Two-factor verification step (demo)
-      if (!formData.twoFactorCode || formData.twoFactorCode.length !== 6) {
-        setError("Please enter a valid 6-digit verification code.")
+      if (!success) {
+        setError("Invalid email or password. Please try again.")
         return
       }
 
-      if (formData.twoFactorCode === "123456") {
-        const redirectPaths = {
-          patient: "/dashboard",
-          doctor: "/doctor-dashboard",
-          admin: "/admin-dashboard",
-        }
-        router.push(redirectPaths[activeRole])
-      } else {
-        setError("Invalid verification code. Please try again.")
+      // Redirect to dashboard based on role
+      const redirectPaths = {
+        patient: "/dashboard",
+        doctor: "/doctor-dashboard",
+        admin: "/admin-dashboard",
       }
+      router.push(redirectPaths[activeRole])
+    } catch (err: any) {
+      console.error(err)
+      setError(err?.message || "Something went wrong during login. Please try again.")
     }
   }
 
@@ -209,61 +150,45 @@ export default function LoginPage() {
                 </div>
               </div>
               <Badge variant="secondary" className="w-fit mx-auto">
-                {showTwoFactor ? "Two-Factor Authentication" : "Secure Login"}
+                Secure Login
               </Badge>
-              <h1 className="text-3xl font-bold text-balance">
-                {showTwoFactor ? "Verify Your Identity" : "Welcome Back"}
-              </h1>
-              <p className="text-muted-foreground">
-                {showTwoFactor
-                  ? "Enter the 6-digit code sent to your registered device"
-                  : "Choose your role and sign in to continue"}
-              </p>
+              <h1 className="text-3xl font-bold text-balance">Welcome Back</h1>
+              <p className="text-muted-foreground">Choose your role and enter your credentials</p>
             </div>
 
             {/* Login Form */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-2xl text-center">
-                  {showTwoFactor ? "Two-Factor Authentication" : "System Login"}
-                </CardTitle>
+                <CardTitle className="text-2xl text-center">System Login</CardTitle>
                 <CardDescription className="text-center">
-                  {showTwoFactor
-                    ? "Complete your secure login with verification code"
-                    : "Select your role and enter your credentials"}
+                  Select your role and enter your credentials
                 </CardDescription>
               </CardHeader>
 
               <CardContent>
-                {!showTwoFactor && (
-                  <Tabs
-                    value={activeRole}
-                    onValueChange={(value) => handleRoleChange(value as UserRole)}
-                    className="mb-6"
-                  >
-                    <TabsList className="grid w-full grid-cols-3">
-                      <TabsTrigger value="patient" className="flex items-center gap-2">
-                        <User className="w-4 h-4" /> Patient
-                      </TabsTrigger>
-                      <TabsTrigger value="doctor" className="flex items-center gap-2">
-                        <Stethoscope className="w-4 h-4" /> Doctor
-                      </TabsTrigger>
-                      <TabsTrigger value="admin" className="flex items-center gap-2">
-                        <Settings className="w-4 h-4" /> Admin
-                      </TabsTrigger>
-                    </TabsList>
+                <Tabs value={activeRole} onValueChange={(value) => handleRoleChange(value as UserRole)} className="mb-6">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="patient" className="flex items-center gap-2">
+                      <User className="w-4 h-4" /> Patient
+                    </TabsTrigger>
+                    <TabsTrigger value="doctor" className="flex items-center gap-2">
+                      <Stethoscope className="w-4 h-4" /> Doctor
+                    </TabsTrigger>
+                    <TabsTrigger value="admin" className="flex items-center gap-2">
+                      <Settings className="w-4 h-4" /> Admin
+                    </TabsTrigger>
+                  </TabsList>
 
-                    <TabsContent value={activeRole} className="mt-4">
-                      <div className="text-center p-4 bg-muted/50 rounded-lg">
-                        <div className="flex items-center justify-center gap-2 mb-2">
-                          <currentConfig.icon className="w-5 h-5 text-primary" />
-                          <span className="font-semibold">{currentConfig.title}</span>
-                        </div>
-                        <p className="text-sm text-muted-foreground">{currentConfig.description}</p>
+                  <TabsContent value={activeRole} className="mt-4">
+                    <div className="text-center p-4 bg-muted/50 rounded-lg">
+                      <div className="flex items-center justify-center gap-2 mb-2">
+                        <currentConfig.icon className="w-5 h-5 text-primary" />
+                        <span className="font-semibold">{currentConfig.title}</span>
                       </div>
-                    </TabsContent>
-                  </Tabs>
-                )}
+                      <p className="text-sm text-muted-foreground">{currentConfig.description}</p>
+                    </div>
+                  </TabsContent>
+                </Tabs>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
                   {error && (
@@ -273,171 +198,91 @@ export default function LoginPage() {
                     </Alert>
                   )}
 
-                  {!showTwoFactor ? (
-                    <>
-                      <div className="space-y-2">
-                        <Label htmlFor="email">Email Address</Label>
-                        <div className="relative">
-                          <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            id="email"
-                            type="email"
-                            placeholder={`${activeRole}@kalawa.go.ke`}
-                            value={formData.email_address}
-                            onChange={(e) => handleInputChange("email_address", e.target.value)}
-                            className="pl-10"
-                            required
-                          />
-                        </div>
-                      </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email Address</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="Enter your email address"
+                        value={formData.email_address}
+                        onChange={(e) => handleInputChange("email_address", e.target.value)}
+                        className="pl-10"
+                        required
+                      />
+                    </div>
+                  </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="password">Password</Label>
-                        <div className="relative">
-                          <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            id="password"
-                            type={showPassword ? "text" : "password"}
-                            placeholder="Enter your password"
-                            value={formData.password}
-                            onChange={(e) => handleInputChange("password", e.target.value)}
-                            className="pl-10 pr-10"
-                            required
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                            onClick={() => setShowPassword(!showPassword)}
-                          >
-                            {showPassword ? (
-                              <EyeOff className="h-4 w-4 text-muted-foreground" />
-                            ) : (
-                              <Eye className="h-4 w-4 text-muted-foreground" />
-                            )}
-                          </Button>
-                        </div>
-
-                        {/* password strength bars */}
-                        {formData.password && (
-                          <div className="space-y-1">
-                            <div className="flex gap-1">
-                              {[1, 2, 3, 4, 5].map((level) => (
-                                <div
-                                  key={level}
-                                  className={`h-1 flex-1 rounded-full ${
-                                    level <= passwordStrength.score
-                                      ? passwordStrength.score <= 2
-                                        ? "bg-red-500"
-                                        : passwordStrength.score <= 3
-                                        ? "bg-yellow-500"
-                                        : "bg-green-500"
-                                      : "bg-muted"
-                                  }`}
-                                />
-                              ))}
-                            </div>
-                            <p className="text-xs text-muted-foreground">{passwordStrength.feedback}</p>
-                            <p className="text-xs text-muted-foreground">
-                              Must contain: 8+ characters, letters, numbers, and special characters
-                            </p>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="remember"
-                            checked={formData.rememberMe}
-                            onCheckedChange={(checked) => handleInputChange("rememberMe", checked as boolean)}
-                          />
-                          <Label htmlFor="remember" className="text-sm">
-                            Remember me
-                          </Label>
-                        </div>
-                        <Link href="/forgot-password" className="text-sm text-primary hover:underline">
-                          Forgot password?
-                        </Link>
-                      </div>
-
-                      <Button type="submit" size="lg" className="w-full" disabled={isLoading}>
-                        {isLoading
-                          ? "Signing in..."
-                          : `Sign In as ${activeRole.charAt(0).toUpperCase() + activeRole.slice(1)}`}
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="password"
+                        type={showPassword ? "text" : "password"}
+                        placeholder="Enter your password"
+                        value={formData.password}
+                        onChange={(e) => handleInputChange("password", e.target.value)}
+                        className="pl-10 pr-10"
+                        required
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
                       </Button>
-                    </>
-                  ) : (
-                    <>
-                      <div className="text-center mb-6">
-                        <div className="flex items-center justify-center w-16 h-16 bg-primary/10 rounded-full mx-auto mb-4">
-                          <Smartphone className="w-8 h-8 text-primary" />
+                    </div>
+
+                    {formData.password && (
+                      <div className="space-y-1">
+                        <div className="flex gap-1">
+                          {[1, 2, 3, 4, 5].map((level) => (
+                            <div
+                              key={level}
+                              className={`h-1 flex-1 rounded-full ${
+                                level <= passwordStrength.score
+                                  ? passwordStrength.score <= 2
+                                    ? "bg-red-500"
+                                    : passwordStrength.score <= 3
+                                    ? "bg-yellow-500"
+                                    : "bg-green-500"
+                                  : "bg-muted"
+                              }`}
+                            />
+                          ))}
                         </div>
-                        <p className="text-sm text-muted-foreground">
-                          We've sent a 6-digit verification code to your registered device.
+                        <p className="text-xs text-muted-foreground">{passwordStrength.feedback}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Must contain: 8+ characters, letters, numbers, and special characters
                         </p>
                       </div>
+                    )}
+                  </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="twoFactorCode">Verification Code</Label>
-                        <Input
-                          id="twoFactorCode"
-                          type="text"
-                          placeholder="Enter 6-digit code"
-                          value={formData.twoFactorCode}
-                          onChange={(e) =>
-                            handleInputChange("twoFactorCode", e.target.value.replace(/\D/g, "").slice(0, 6))
-                          }
-                          className="text-center text-lg tracking-widest"
-                          maxLength={6}
-                          required
-                        />
-                        <p className="text-xs text-muted-foreground text-center">Demo code: 123456</p>
-                      </div>
-
-                      <div className="flex gap-4">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="lg"
-                          className="flex-1 bg-transparent"
-                          onClick={() => setShowTwoFactor(false)}
-                        >
-                          Back
-                        </Button>
-                        <Button type="submit" size="lg" className="flex-1" disabled={isLoading}>
-                          {isLoading ? "Verifying..." : "Verify & Sign In"}
-                        </Button>
-                      </div>
-
-                      <div className="text-center">
-                        <Button variant="link" className="text-sm">
-                          Resend code
-                        </Button>
-                      </div>
-                    </>
-                  )}
-
-                  {!showTwoFactor && (
-                    <div className="text-center space-y-4">
-                      <div className="relative">
-                        <div className="absolute inset-0 flex items-center">
-                          <span className="w-full border-t" />
-                        </div>
-                        <div className="relative flex justify-center text-xs uppercase">
-                          <span className="bg-background px-2 text-muted-foreground">Or</span>
-                        </div>
-                      </div>
-
-                      <p className="text-sm text-muted-foreground">
-                        Don't have an account?{" "}
-                        <Link href="/register" className="text-primary hover:underline font-medium">
-                          Create account
-                        </Link>
-                      </p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="remember"
+                        checked={formData.rememberMe}
+                        onCheckedChange={(checked) => handleInputChange("rememberMe", checked as boolean)}
+                      />
+                      <Label htmlFor="remember" className="text-sm">
+                        Remember me
+                      </Label>
                     </div>
-                  )}
+                    <Link href="/forgot-password" className="text-sm text-primary hover:underline">
+                      Forgot password?
+                    </Link>
+                  </div>
+
+                  <Button type="submit" size="lg" className="w-full" disabled={isLoading}>
+                    {isLoading ? "Signing in..." : `Sign In as ${activeRole.charAt(0).toUpperCase() + activeRole.slice(1)}`}
+                  </Button>
                 </form>
               </CardContent>
             </Card>
@@ -450,14 +295,18 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Demo Credentials */}
+            {/* Demo Credentials - Updated */}
             <Card className="mt-6 bg-muted/50">
               <CardContent className="pt-6">
                 <div className="text-center space-y-2">
                   <h3 className="font-semibold text-sm">Demo Credentials</h3>
-                  <div className="text-xs text-muted-foreground space-y-1">
-                    <div>Email: {activeRole}@kalawa.go.ke</div>
-                    <div>Password: Password123!</div>
+                  <div className="text-xs text-muted-foreground space-y-2">
+                    <div><strong>Patient:</strong> patient@kalawa.go.ke / Password123!</div>
+                    <div><strong>Doctor:</strong> doctor@kalawa.go.ke / Password123!</div>
+                    <div><strong>Admin:</strong> admin@kalawa.go.ke / Password123!</div>
+                    <div className="text-green-600 font-medium mt-2">
+                      Select role above and type credentials manually
+                    </div>
                   </div>
                 </div>
               </CardContent>

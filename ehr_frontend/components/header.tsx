@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { useAuth } from "@/lib/auth-context"
+import { useAuth } from "@/context/auth-context"
 import { Menu, X, Heart, Phone, Mail, User, LogOut, Settings, Stethoscope } from "lucide-react"
 
 export function Header() {

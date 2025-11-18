@@ -13,16 +13,43 @@ const router = express.Router();
 // ✅ Generate random 6-digit OTP
 const generateOTP = () => crypto.randomInt(100000, 999999).toString();
 
-// ------------------------ GET ALL PATIENTS (ADMIN ONLY) ------------------------
+// ------------------------ GET ALL PATIENTS (ADMIN & DOCTORS ONLY) ------------------------
 router.get("/", authenticate, async (req, res) => {
-  if (req.user.role !== "admin")
+  // ✅ ALLOW: Admins and Doctors to view all patients
+  if (req.user.role !== "admin" && req.user.role !== "doctor") {
     return res.status(403).json({ error: "Access denied" });
+  }
 
   try {
-    const result = await pool.query(
-      `SELECT patient_id, first_name, last_name, email_address, phone_number 
-       FROM patients WHERE is_deleted = false`
-    );
+    let result;
+    
+    if (req.user.role === "doctor") {
+      // Doctors can only see patients who have appointments with them
+      result = await pool.query(
+        `SELECT DISTINCT 
+          p.patient_id, 
+          p.first_name, 
+          p.last_name, 
+          p.email_address, 
+          p.phone_number,
+          p.dob,
+          p.gender
+         FROM patients p
+         INNER JOIN appointments a ON p.patient_id = a.patient_id
+         WHERE p.is_deleted = false 
+           AND a.doctor_id = $1
+         ORDER BY p.first_name, p.last_name`,
+        [req.user.id]
+      );
+    } else {
+      // Admins can see all patients
+      result = await pool.query(
+        `SELECT patient_id, first_name, last_name, email_address, phone_number 
+         FROM patients WHERE is_deleted = false
+         ORDER BY first_name, last_name`
+      );
+    }
+    
     res.json(result.rows);
   } catch (err) {
     console.error("❌ GET PATIENTS ERROR:", err.message);
@@ -34,14 +61,45 @@ router.get("/", authenticate, async (req, res) => {
 router.get("/:id", authenticate, async (req, res) => {
   const { id } = req.params;
 
-  // Patients can only view their own profile
+  // ✅ ALLOW: Patients can view their own profile, Doctors can view their patients, Admins can view any patient
   if (req.user.role === "patient" && req.user.id !== parseInt(id)) {
     return res.status(403).json({ error: "Access denied" });
   }
 
+  // For doctors, check if they have appointments with this patient
+  if (req.user.role === "doctor") {
+    try {
+      const doctorPatientCheck = await pool.query(
+        `SELECT 1 FROM appointments 
+         WHERE patient_id = $1 AND doctor_id = $2 AND is_deleted = false
+         LIMIT 1`,
+        [id, req.user.id]
+      );
+      
+      if (doctorPatientCheck.rows.length === 0) {
+        return res.status(403).json({ error: "Access denied: You can only view your own patients" });
+      }
+    } catch (err) {
+      console.error("❌ DOCTOR PATIENT CHECK ERROR:", err.message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
   try {
     const result = await pool.query(
-      `SELECT patient_id, first_name, last_name, email_address, phone_number 
+      `SELECT 
+        patient_id, 
+        first_name, 
+        last_name, 
+        email_address, 
+        phone_number,
+        dob,
+        gender,
+        address,
+        emergency_contact,
+        status,
+        last_condition,
+        last_visit
        FROM patients WHERE patient_id = $1 AND is_deleted = false`,
       [id]
     );
@@ -52,6 +110,124 @@ router.get("/:id", authenticate, async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     console.error("❌ GET PATIENT ERROR:", err.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ------------------------ GET PATIENT DETAILS WITH MEDICAL HISTORY (DOCTORS ONLY) ------------------------
+router.get("/:id/medical-history", authenticate, async (req, res) => {
+  const { id } = req.params;
+
+  // ✅ ALLOW: Only doctors can access detailed medical history
+  if (req.user.role !== "doctor") {
+    return res.status(403).json({ error: "Access denied" });
+  }
+
+  try {
+    // Check if doctor has appointments with this patient
+    const doctorPatientCheck = await pool.query(
+      `SELECT 1 FROM appointments 
+       WHERE patient_id = $1 AND doctor_id = $2 AND is_deleted = false
+       LIMIT 1`,
+      [id, req.user.id]
+    );
+    
+    if (doctorPatientCheck.rows.length === 0) {
+      return res.status(403).json({ error: "Access denied: You can only view your own patients" });
+    }
+
+    // Get patient basic info
+    const patientResult = await pool.query(
+      `SELECT 
+        patient_id,
+        first_name,
+        last_name,
+        email_address,
+        phone_number,
+        dob,
+        gender,
+        address,
+        emergency_contact,
+        current_medications,
+        allergies,
+        status,
+        last_condition,
+        last_visit
+       FROM patients WHERE patient_id = $1 AND is_deleted = false`,
+      [id]
+    );
+
+    if (patientResult.rows.length === 0)
+      return res.status(404).json({ error: "Patient not found" });
+
+    const patient = patientResult.rows[0];
+
+    // Get medical history
+    const medicalHistoryResult = await pool.query(
+      `SELECT 
+        mh.medical_history_id,
+        mh.date,
+        mh.diagnosis,
+        mh.treatment,
+        mh.notes,
+        mh.prescriptions,
+        mh.follow_up_date,
+        CONCAT(d.first_name, ' ', d.last_name) as doctor_name
+       FROM medical_history mh
+       LEFT JOIN doctors d ON mh.doctor_id = d.doctor_id
+       WHERE mh.patient_id = $1
+       ORDER BY mh.date DESC`,
+      [id]
+    );
+
+    // Get latest vitals
+    const vitalsResult = await pool.query(
+      `SELECT 
+        blood_pressure,
+        heart_rate,
+        temperature,
+        weight,
+        height,
+        recorded_at
+       FROM patient_vitals
+       WHERE patient_id = $1
+       ORDER BY recorded_at DESC
+       LIMIT 1`,
+      [id]
+    );
+
+    // Get appointments with this doctor
+    const appointmentsResult = await pool.query(
+      `SELECT 
+        appointment_id,
+        date,
+        time,
+        reason,
+        type,
+        status,
+        notes
+       FROM appointments
+       WHERE patient_id = $1 AND doctor_id = $2 AND is_deleted = false
+       ORDER BY date DESC, time DESC`,
+      [id, req.user.id]
+    );
+
+    const patientWithDetails = {
+      ...patient,
+      medicalHistory: medicalHistoryResult.rows,
+      vitals: vitalsResult.rows[0] || null,
+      appointments: appointmentsResult.rows,
+      currentMedications: patient.current_medications || [],
+      allergies: patient.allergies || []
+    };
+
+    res.json({
+      success: true,
+      patient: patientWithDetails
+    });
+
+  } catch (err) {
+    console.error("❌ GET PATIENT MEDICAL HISTORY ERROR:", err.message);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -260,20 +436,56 @@ router.post("/login", async (req, res) => {
 router.get("/:id/appointments", authenticate, async (req, res) => {
   const { id } = req.params;
 
+  // ✅ ALLOW: Patients can view their own appointments, Doctors can view appointments of their patients
   if (req.user.role === "patient" && req.user.id !== parseInt(id)) {
     return res.status(403).json({ error: "Access denied" });
   }
 
-  try {
-    const result = await pool.query(
-      `SELECT a.appointment_id, a.doctor_id, d.first_name AS doctor_first_name, d.last_name AS doctor_last_name, a.date, a.time, a.status
-       FROM appointments a
-       JOIN doctors d ON a.doctor_id = d.doctor_id
-       WHERE a.patient_id = $1 AND a.is_deleted = false
-       ORDER BY a.date, a.time`,
-      [id]
-    );
+  // For doctors, check if they have appointments with this patient
+  if (req.user.role === "doctor") {
+    try {
+      const doctorPatientCheck = await pool.query(
+        `SELECT 1 FROM appointments 
+         WHERE patient_id = $1 AND doctor_id = $2 AND is_deleted = false
+         LIMIT 1`,
+        [id, req.user.id]
+      );
+      
+      if (doctorPatientCheck.rows.length === 0) {
+        return res.status(403).json({ error: "Access denied: You can only view appointments with your patients" });
+      }
+    } catch (err) {
+      console.error("❌ DOCTOR PATIENT CHECK ERROR:", err.message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
 
+  try {
+    let query, params;
+
+    if (req.user.role === "doctor") {
+      // Doctors see only their appointments with this patient
+      query = `
+        SELECT a.appointment_id, a.doctor_id, d.first_name AS doctor_first_name, 
+               d.last_name AS doctor_last_name, a.date, a.time, a.status, a.reason
+        FROM appointments a
+        JOIN doctors d ON a.doctor_id = d.doctor_id
+        WHERE a.patient_id = $1 AND a.doctor_id = $2 AND a.is_deleted = false
+        ORDER BY a.date, a.time`;
+      params = [id, req.user.id];
+    } else {
+      // Patients and admins see all appointments for the patient
+      query = `
+        SELECT a.appointment_id, a.doctor_id, d.first_name AS doctor_first_name, 
+               d.last_name AS doctor_last_name, a.date, a.time, a.status, a.reason
+        FROM appointments a
+        JOIN doctors d ON a.doctor_id = d.doctor_id
+        WHERE a.patient_id = $1 AND a.is_deleted = false
+        ORDER BY a.date, a.time`;
+      params = [id];
+    }
+
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
     console.error("❌ GET PATIENT APPOINTMENTS ERROR:", err.message);
@@ -285,19 +497,56 @@ router.get("/:id/appointments", authenticate, async (req, res) => {
 router.get("/:id/prescriptions", authenticate, async (req, res) => {
   const { id } = req.params;
 
+  // ✅ ALLOW: Patients can view their own prescriptions, Doctors can view prescriptions of their patients
   if (req.user.role === "patient" && req.user.id !== parseInt(id)) {
     return res.status(403).json({ error: "Access denied" });
   }
 
+  // For doctors, check if they have prescribed to this patient
+  if (req.user.role === "doctor") {
+    try {
+      const doctorPatientCheck = await pool.query(
+        `SELECT 1 FROM prescriptions 
+         WHERE patient_id = $1 AND doctor_id = $2
+         LIMIT 1`,
+        [id, req.user.id]
+      );
+      
+      if (doctorPatientCheck.rows.length === 0) {
+        return res.status(403).json({ error: "Access denied: You can only view prescriptions for your patients" });
+      }
+    } catch (err) {
+      console.error("❌ DOCTOR PATIENT CHECK ERROR:", err.message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+
   try {
-    const result = await pool.query(
-      `SELECT pr.prescription_id, pr.doctor_id, d.first_name AS doctor_first_name, d.last_name AS doctor_last_name, pr.created_at
-       FROM prescriptions pr
-       JOIN doctors d ON pr.doctor_id = d.doctor_id
-       WHERE pr.patient_id = $1
-       ORDER BY pr.created_at DESC`,
-      [id]
-    );
+    let query, params;
+
+    if (req.user.role === "doctor") {
+      // Doctors see only their prescriptions for this patient
+      query = `
+        SELECT pr.prescription_id, pr.doctor_id, d.first_name AS doctor_first_name, 
+               d.last_name AS doctor_last_name, pr.created_at, pr.diagnosis
+        FROM prescriptions pr
+        JOIN doctors d ON pr.doctor_id = d.doctor_id
+        WHERE pr.patient_id = $1 AND pr.doctor_id = $2
+        ORDER BY pr.created_at DESC`;
+      params = [id, req.user.id];
+    } else {
+      // Patients and admins see all prescriptions for the patient
+      query = `
+        SELECT pr.prescription_id, pr.doctor_id, d.first_name AS doctor_first_name, 
+               d.last_name AS doctor_last_name, pr.created_at, pr.diagnosis
+        FROM prescriptions pr
+        JOIN doctors d ON pr.doctor_id = d.doctor_id
+        WHERE pr.patient_id = $1
+        ORDER BY pr.created_at DESC`;
+      params = [id];
+    }
+
+    const result = await pool.query(query, params);
 
     // Get drugs for each prescription
     const prescriptions = await Promise.all(

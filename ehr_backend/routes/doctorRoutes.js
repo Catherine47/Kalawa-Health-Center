@@ -19,20 +19,55 @@ router.get("/test", (req, res) => {
   res.send("✅ doctorRoutes is working");
 });
 
-// ------------------------ GET ALL DOCTORS (ADMIN ONLY) ------------------------
+// ------------------------ GET ALL DOCTORS (PATIENTS, DOCTORS & ADMINS) ------------------------
 router.get("/", authenticate, async (req, res) => {
-  if (req.user.role !== "admin") return res.status(403).json({ error: "Access denied" });
+  // ✅ ALLOW: Patients, Doctors, and Admins to view doctors
+  if (req.user.role !== "patient" && req.user.role !== "doctor" && req.user.role !== "admin") {
+    return res.status(403).json({ error: "Access denied" });
+  }
 
   try {
+    console.log("👤 User requesting doctors:", {
+      id: req.user.id,
+      role: req.user.role,
+      name: req.user.name
+    });
+
     const result = await pool.query(
       `SELECT doctor_id, first_name, last_name, email_address, phone_number, specialization, is_verified, created_at
        FROM doctors
        WHERE is_deleted = false
-       ORDER BY doctor_id ASC`
+       ORDER BY first_name, last_name ASC`
     );
+    
+    console.log(`✅ Doctors list sent to ${req.user.role} (${req.user.id}): ${result.rows.length} doctors`);
     res.json(result.rows);
   } catch (err) {
     console.error("❌ GET DOCTORS ERROR:", err.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ------------------------ GET AVAILABLE DOCTORS (PUBLIC - NO AUTH REQUIRED) ------------------------
+router.get("/public/available", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT 
+         doctor_id as id, 
+         first_name, 
+         last_name, 
+         specialization,
+         email_address as email,
+         phone_number as phone
+       FROM doctors
+       WHERE is_deleted = false
+       ORDER BY first_name, last_name ASC`
+    );
+
+    console.log(`🌐 Public doctors list accessed: ${result.rows.length} doctors`);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("❌ GET PUBLIC DOCTORS ERROR:", err.message);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -41,7 +76,26 @@ router.get("/", authenticate, async (req, res) => {
 router.get("/:id", authenticate, async (req, res) => {
   const { id } = req.params;
 
-  // doctor may only view their own profile (unless admin)
+  // ✅ ALLOW: Patients can view any doctor profile for booking
+  if (req.user.role === "patient") {
+    try {
+      const result = await pool.query(
+        `SELECT doctor_id, first_name, last_name, specialization, is_verified
+         FROM doctors
+         WHERE doctor_id = $1 AND is_deleted = false`,
+        [id]
+      );
+
+      if (result.rows.length === 0) return res.status(404).json({ error: "Doctor not found" });
+      res.json(result.rows[0]);
+    } catch (err) {
+      console.error("❌ GET DOCTOR ERROR:", err.message);
+      res.status(500).json({ error: "Internal server error" });
+    }
+    return;
+  }
+
+  // For doctors and admins - original logic
   if (req.user.role === "doctor" && req.user.id !== parseInt(id))
     return res.status(403).json({ error: "Access denied" });
 
@@ -89,7 +143,7 @@ router.post("/register", async (req, res) => {
       [first_name, last_name, email_address, phone_number, specialization, hashedPassword, otp_code, otp_expires]
     );
 
-    // send OTP (don't fail registration if email fails — return success but inform user)
+    // send OTP
     try {
       await sendOTPEmail(email_address, otp_code, "Doctor");
     } catch (emailErr) {
@@ -106,7 +160,6 @@ router.post("/register", async (req, res) => {
     });
   } catch (err) {
     console.error("❌ REGISTER DOCTOR ERROR:", err.message);
-    // try to detect unique violation
     if (err.code === "23505") return res.status(400).json({ error: "Email or phone already exists" });
     res.status(500).json({ error: "Internal server error" });
   }
@@ -136,7 +189,6 @@ router.post("/resend-otp", async (req, res) => {
       return res.json({ message: "OTP resent successfully" });
     } catch (emailErr) {
       console.error("⚠️ RESEND OTP email failed:", emailErr.message);
-      // still return success on regeneration (depends on desired behaviour)
       return res.status(200).json({ message: "OTP regenerated but email failed to send" });
     }
   } catch (err) {
@@ -189,15 +241,181 @@ router.post("/login", async (req, res) => {
     const isMatch = await bcrypt.compare(password, doctor.password_hash);
     if (!isMatch) return res.status(400).json({ error: "Invalid password" });
 
-    const token = jwt.sign({ id: doctor.doctor_id, email: doctor.email_address, role: "doctor" }, process.env.JWT_SECRET, { expiresIn: "2h" });
+    const token = jwt.sign({ 
+      id: doctor.doctor_id, 
+      email: doctor.email_address, 
+      role: "doctor",
+      name: `${doctor.first_name} ${doctor.last_name}`,
+      specialization: doctor.specialization
+    }, process.env.JWT_SECRET, { expiresIn: "2h" });
 
     res.json({
       message: "Login successful",
       token,
-      doctor: { id: doctor.doctor_id, name: `${doctor.first_name} ${doctor.last_name}`, email: doctor.email_address }
+      doctor: { 
+        id: doctor.doctor_id, 
+        name: `${doctor.first_name} ${doctor.last_name}`, 
+        email: doctor.email_address,
+        specialization: doctor.specialization
+      }
     });
   } catch (err) {
     console.error("❌ LOGIN ERROR:", err.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ======================== DOCTOR APPOINTMENTS ENDPOINTS ========================
+// ------------------------ GET DOCTOR APPOINTMENTS (WITH FILTERS) ------------------------
+router.get("/appointments/all", authenticate, async (req, res) => {
+  if (req.user.role !== "doctor") {
+    return res.status(403).json({ error: "Access denied" });
+  }
+
+  const { date, status, upcoming } = req.query;
+  
+  try {
+    let query = `
+      SELECT 
+        a.appointment_id,
+        a.patient_id,
+        p.first_name AS patient_first_name,
+        p.last_name AS patient_last_name,
+        p.phone_number AS patient_phone,
+        p.dob AS patient_dob,
+        p.gender AS patient_gender,
+        a.appointment_date AS date,
+        a.appointment_time AS time,
+        a.status,
+        a.created_at
+      FROM appointments a
+      JOIN patients p ON a.patient_id = p.patient_id
+      WHERE a.doctor_id = $1 
+        AND a.is_deleted = false
+        AND p.is_deleted = false
+    `;
+    
+    const params = [req.user.id];
+    let paramCount = 1;
+
+    // Add filters based on query parameters
+    if (date) {
+      paramCount++;
+      query += ` AND a.appointment_date = $${paramCount}`;
+      params.push(date);
+    }
+    
+    if (status) {
+      paramCount++;
+      query += ` AND a.status = $${paramCount}`;
+      params.push(status);
+    }
+    
+    if (upcoming === 'true') {
+      query += ` AND a.appointment_date >= CURRENT_DATE`;
+    }
+
+    query += ` ORDER BY a.appointment_date DESC, a.appointment_time DESC`;
+
+    const result = await pool.query(query, params);
+
+    res.json({
+      success: true,
+      count: result.rows.length,
+      appointments: result.rows
+    });
+  } catch (err) {
+    console.error("❌ GET DOCTOR APPOINTMENTS ERROR:", err.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+// ======================== DOCTOR DASHBOARD ENDPOINTS ========================
+
+// ------------------------ GET DOCTOR'S DASHBOARD PATIENTS ------------------------
+router.get("/dashboard/patients", authenticate, async (req, res) => {
+  if (req.user.role !== "doctor") {
+    return res.status(403).json({ error: "Access denied" });
+  }
+
+  try {
+    const doctorId = req.user.id;
+
+    console.log(`🩺 Doctor ${doctorId} requesting dashboard patients`);
+
+    // Get patients with only basic info that exists in the database
+    const result = await pool.query(
+      `SELECT DISTINCT 
+        p.patient_id,
+        p.first_name,
+        p.last_name,
+        p.dob,
+        p.gender,
+        p.phone_number,
+        p.email_address
+       FROM patients p
+       INNER JOIN appointments a ON p.patient_id = a.patient_id
+       WHERE a.doctor_id = $1 
+         AND p.is_deleted = false
+       ORDER BY p.first_name, p.last_name`,
+      [doctorId]
+    );
+
+    console.log(`✅ Found ${result.rows.length} patients for doctor ${doctorId}`);
+
+    res.json({
+      success: true,
+      patients: result.rows
+    });
+
+  } catch (err) {
+    console.error("❌ GET DOCTOR DASHBOARD PATIENTS ERROR:", err.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+// ------------------------ GET DOCTOR'S TODAY'S APPOINTMENTS ------------------------
+router.get("/dashboard/appointments/today", authenticate, async (req, res) => {
+  if (req.user.role !== "doctor") {
+    return res.status(403).json({ error: "Access denied" });
+  }
+
+  try {
+    const doctorId = req.user.id;
+    const today = new Date().toISOString().split('T')[0];
+
+    console.log(`📅 Doctor ${doctorId} requesting today's appointments for ${today}`);
+
+    // FIXED: Using consistent field names - check which one exists in your database
+    const result = await pool.query(
+      `SELECT 
+        a.appointment_id as id,
+        p.patient_id,
+        CONCAT(p.first_name, ' ', p.last_name) as patient_name,
+        EXTRACT(YEAR FROM AGE(p.dob)) as patient_age,
+        p.phone_number as patient_phone,
+        a.date as appointment_date,
+        a.time as appointment_time,
+        a.reason,
+        a.type,
+        a.status,
+        a.notes
+       FROM appointments a
+       INNER JOIN patients p ON a.patient_id = p.patient_id
+       WHERE a.doctor_id = $1 
+         AND a.date = $2
+         AND a.is_deleted = false
+       ORDER BY a.time ASC`,
+      [doctorId, today]
+    );
+
+    console.log(`✅ Found ${result.rows.length} appointments for today`);
+
+    res.json({
+      success: true,
+      appointments: result.rows
+    });
+
+  } catch (err) {
+    console.error("❌ GET TODAY'S APPOINTMENTS ERROR:", err.message);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -223,21 +441,120 @@ router.get("/my-patients", authenticate, async (req, res) => {
 });
 
 // ------------------------ DOCTOR: their appointments ------------------------
+// FIXED: This endpoint had inconsistent field names
 router.get("/my-appointments", authenticate, async (req, res) => {
   if (req.user.role !== "doctor") return res.status(403).json({ error: "Access denied" });
 
   try {
+    // Using the same field names as the dashboard endpoint for consistency
     const result = await pool.query(
-      `SELECT a.appointment_id, a.patient_id, p.first_name, p.last_name, a.appointment_datetime, a.status
+      `SELECT 
+        a.appointment_id, 
+        a.patient_id, 
+        p.first_name, 
+        p.last_name, 
+        a.date as appointment_date,
+        a.time as appointment_time,
+        a.status
        FROM appointments a
        JOIN patients p ON a.patient_id = p.patient_id
-       WHERE a.doctor_id = $1 AND a.deleted_at IS NULL
-       ORDER BY a.appointment_datetime`,
+       WHERE a.doctor_id = $1 AND a.is_deleted = false
+       ORDER BY a.date, a.time`,
       [req.user.id]
     );
     res.json(result.rows);
   } catch (err) {
     console.error("❌ GET DOCTOR APPOINTMENTS ERROR:", err.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ------------------------ START APPOINTMENT CONSULTATION ------------------------
+router.post("/appointments/start", authenticate, async (req, res) => {
+  if (req.user.role !== "doctor") {
+    return res.status(403).json({ error: "Access denied" });
+  }
+
+  try {
+    const { appointmentId } = req.body;
+    const doctorId = req.user.id;
+
+    const result = await pool.query(
+      `UPDATE appointments 
+       SET status = 'in-progress', started_at = NOW()
+       WHERE appointment_id = $1 
+         AND doctor_id = $2
+         AND is_deleted = false
+       RETURNING appointment_id`,
+      [appointmentId, doctorId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ 
+        error: "Appointment not found or access denied" 
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Consultation started successfully"
+    });
+
+  } catch (err) {
+    console.error("❌ START APPOINTMENT ERROR:", err.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ------------------------ RECORD DIAGNOSIS ------------------------
+router.post("/diagnosis", authenticate, async (req, res) => {
+  if (req.user.role !== "doctor") {
+    return res.status(403).json({ error: "Access denied" });
+  }
+
+  try {
+    const { patientId, diagnosis, treatment, notes, prescriptions, followUp } = req.body;
+    const doctorId = req.user.id;
+
+    // Start transaction
+    const client = await pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+
+      // Insert medical history
+      const medicalHistoryResult = await client.query(
+        `INSERT INTO medical_history 
+         (patient_id, doctor_id, date, diagnosis, treatment, notes, prescriptions, follow_up_date)
+         VALUES ($1, $2, NOW(), $3, $4, $5, $6, $7)
+         RETURNING medical_history_id`,
+        [patientId, doctorId, diagnosis, treatment, notes, prescriptions, followUp]
+      );
+
+      // Update patient's last visit and condition
+      await client.query(
+        `UPDATE patients 
+         SET last_visit = NOW(), last_condition = $1, status = 'under-treatment'
+         WHERE patient_id = $2`,
+        [diagnosis, patientId]
+      );
+
+      res.json({
+        success: true,
+        message: 'Diagnosis recorded successfully'
+      });
+
+      await client.query('COMMIT');
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+  } catch (err) {
+    console.error("❌ RECORD DIAGNOSIS ERROR:", err.message);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -252,9 +569,9 @@ router.post("/prescriptions", authenticate, async (req, res) => {
   }
 
   try {
-    // verify there is an appointment between doctor and patient (booked)
+    // verify there is an appointment between doctor and patient
     const appt = await pool.query(
-      `SELECT 1 FROM appointments WHERE patient_id = $1 AND doctor_id = $2 AND deleted_at IS NULL`,
+      `SELECT 1 FROM appointments WHERE patient_id = $1 AND doctor_id = $2 AND is_deleted = false`,
       [patient_id, req.user.id]
     );
 

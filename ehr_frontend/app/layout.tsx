@@ -5,7 +5,8 @@ import { GeistMono } from "geist/font/mono"
 // import { Analytics } from "@vercel/analytics/next"
 import { Suspense } from "react"
 import { ChatbotProvider } from "@/components/chatbot-provider"
-import { AuthProvider } from "@/lib/auth-context"
+// 🔥 Updated import path for AuthProvider
+import { AuthProvider } from "@/context/auth-context"
 import "./globals.css"
 
 export const metadata: Metadata = {
@@ -23,7 +24,9 @@ export default function RootLayout({
     <html lang="en">
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
         <AuthProvider>
-          <Suspense fallback={null}>{children}</Suspense>
+          <Suspense fallback={null}>
+            {children}
+          </Suspense>
           <ChatbotProvider />
         </AuthProvider>
         {/* <Analytics /> */}

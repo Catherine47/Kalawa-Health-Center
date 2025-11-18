@@ -1,7 +1,4 @@
 {
-  "/verify-otp/page": "app/verify-otp/page.js",
-  "/login/page": "app/login/page.js",
-  "/services/page": "app/services/page.js",
-  "/admin-dashboard/page": "app/admin-dashboard/page.js",
-  "/page": "app/page.js"
+  "/doctor-dashboard/page": "app/doctor-dashboard/page.js",
+  "/login/page": "app/login/page.js"
 }

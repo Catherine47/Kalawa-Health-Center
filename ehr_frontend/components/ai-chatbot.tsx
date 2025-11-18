@@ -382,3 +382,5 @@ export function AIChatbot({ className }: AIChatbotProps) {
     </Card>
   )
 }
+
+

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,23 +10,123 @@ import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
 import { format, addDays, isBefore, startOfDay } from "date-fns"
-import { CalendarIcon, Clock, User, CheckCircle } from "lucide-react"
+import { CalendarIcon, Clock, User, CheckCircle, Loader2, ArrowLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/context/auth-context"
+import { bookAppointment } from "@/context/api-client"
+import { useRouter } from "next/navigation"
 
 interface AppointmentBookingWidgetProps {
   onBookingComplete?: (booking: any) => void
+  onBookingError?: (error: any) => void
+  onBookingStart?: () => void
+  isBooking?: boolean
 }
 
-export function AppointmentBookingWidget({ onBookingComplete }: AppointmentBookingWidgetProps) {
+// -------------------------- Success Component --------------------------
+function BookingSuccess({ booking, onNewBooking }: { booking: any; onNewBooking: () => void }) {
+  const router = useRouter()
+  const [countdown, setCountdown] = useState(5)
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer)
+          router.push('/dashboard')
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [router])
+
+  const handleRedirectToDashboard = () => router.push('/dashboard')
+  const handleBookAnother = () => onNewBooking()
+
+  return (
+    <Card className="w-full max-w-2xl mx-auto border-green-200 bg-green-50">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-green-700">
+          <CheckCircle className="w-5 h-5" />
+          Appointment Booked Successfully!
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <h4 className="font-semibold text-sm text-muted-foreground">Doctor</h4>
+            <p className="text-lg font-medium">{booking.doctor_name}</p>
+            <p className="text-sm text-muted-foreground">{booking.doctor_specialty}</p>
+          </div>
+          <div>
+            <h4 className="font-semibold text-sm text-muted-foreground">Department</h4>
+            <p className="text-lg font-medium">{booking.department}</p>
+          </div>
+          <div>
+            <h4 className="font-semibold text-sm text-muted-foreground">Date</h4>
+            <p className="text-lg font-medium">
+              {new Date(booking.appointment_date + 'T00:00:00').toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+              })}
+            </p>
+          </div>
+          <div>
+            <h4 className="font-semibold text-sm text-muted-foreground">Time</h4>
+            <p className="text-lg font-medium">{booking.appointment_time}</p>
+          </div>
+        </div>
+
+        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-sm text-blue-700">
+            <strong>Important:</strong> Please arrive 15 minutes before your scheduled time. Bring your ID and any relevant medical records.
+          </p>
+          <p className="text-sm text-blue-700 mt-2 font-semibold">
+            Redirecting to dashboard in {countdown} seconds...
+          </p>
+        </div>
+
+        <div className="flex gap-2">
+          <Button onClick={() => window.print()} variant="outline" className="flex-1">
+            Print Confirmation
+          </Button>
+          <Button onClick={handleBookAnother} variant="outline" className="flex-1">
+            Book Another Appointment
+          </Button>
+          <Button onClick={handleRedirectToDashboard} className="flex-1">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Go to Dashboard
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// -------------------------- Appointment Booking Widget --------------------------
+export function AppointmentBookingWidget({ 
+  onBookingComplete, 
+  onBookingError, 
+  onBookingStart,
+  isBooking = false 
+}: AppointmentBookingWidgetProps) {
+  const { user } = useAuth()
+  const router = useRouter()
   const [step, setStep] = useState(1)
   const [selectedDate, setSelectedDate] = useState<Date>()
   const [selectedTime, setSelectedTime] = useState("")
   const [selectedDepartment, setSelectedDepartment] = useState("")
   const [selectedDoctor, setSelectedDoctor] = useState("")
-  const [patientInfo, setPatientInfo] = useState({
-    reason: "",
-    notes: "",
-  })
+  const [patientInfo, setPatientInfo] = useState({ reason: "", notes: "" })
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [bookingSuccess, setBookingSuccess] = useState<any>(null)
+
+  const patientId = user?.patientId || user?.id || user?.userId
 
   const departments = [
     { id: "curative", name: "Curative Services (General Outpatient & Inpatient)", available: true },
@@ -39,84 +139,187 @@ export function AppointmentBookingWidget({ onBookingComplete }: AppointmentBooki
     { id: "laboratory", name: "Laboratory Services", available: true },
   ]
 
+  const allDoctors = [
+    { id: 1, name: "Dr. Ian Mwangi", specialty: "Dermatologist" },
+    { id: 2, name: "Dr. Ruth Mutua", specialty: "General Practitioner" },
+    { id: 3, name: "Dr. Laban Nzau", specialty: "Cardiologist" },
+    { id: 4, name: "Dr. Mercy Kibet", specialty: "Gynecologist" },
+    { id: 5, name: "Dr. John Otieno", specialty: "Neurologist" },
+    { id: 6, name: "Dr. Raphael Mwanzia", specialty: "Radiologist" },
+    { id: 7, name: "Dr. Ann Kamau", specialty: "Psychiatrist" },
+    { id: 8, name: "Dr. Andrew Mogaka", specialty: "General Practitioner" },
+    { id: 9, name: "Dr. Catherine Muendo", specialty: "Nutritionist" },
+    { id: 10, name: "Dr. Bramuel Ombati", specialty: "Surgeon" },
+    { id: 11, name: "Faith Mwangi", specialty: "Cardiologist" },
+    { id: 12, name: "Japheth Kiragu", specialty: "Dermatologist" },
+    { id: 14, name: "Dr. Brian Kariuki", specialty: "Orthopedic Surgeon" },
+    { id: 15, name: "Dr. John Kamau", specialty: "Surgeon" },
+    { id: 17, name: "John Mutua", specialty: "Pediatrics" },
+    { id: 21, name: "Dr. David Johnson", specialty: "Cardiology" },
+    { id: 22, name: "Dr. Kanyi Kamau", specialty: "Surgeon" },
+    { id: 23, name: "Dr. Mutunga Koech", specialty: "Surgeon" },
+    { id: 24, name: "Dr. Muthee Ikamati", specialty: "Pediatrician" },
+    { id: 25, name: "Dr. Waweru Kimani", specialty: "Neurologist" },
+    { id: 26, name: "Dr. Kibe Karua", specialty: "Dermatologist" },
+    { id: 27, name: "Dr. Waweru Bosire", specialty: "Neurologist" },
+  ]
+
   const doctors = {
-    curative: [
-      { id: "dr-mwangi", name: "Dr. Peter Mwangi", specialty: "General Practice" },
-      { id: "dr-wanjiku", name: "Dr. Grace Wanjiku", specialty: "Internal Medicine" },
-    ],
-    maternity: [
-      { id: "dr-njeri", name: "Dr. Mary Njeri", specialty: "Obstetrics & Gynecology" },
-      { id: "midwife-kamau", name: "Midwife Jane Kamau", specialty: "Midwifery" },
-    ],
-    antenatal: [
-      { id: "dr-njeri", name: "Dr. Mary Njeri", specialty: "Obstetrics & Gynecology" },
-      { id: "nurse-mutua", name: "Nurse Sarah Mutua", specialty: "Maternal Health" },
-    ],
-    "family-planning": [
-      { id: "dr-wanjiku", name: "Dr. Grace Wanjiku", specialty: "Family Planning" },
-      { id: "nurse-kiprotich", name: "Nurse Agnes Kiprotich", specialty: "Reproductive Health" },
-    ],
-    "hiv-aids": [
-      { id: "dr-mwangi", name: "Dr. Peter Mwangi", specialty: "HIV/AIDS Care" },
-      { id: "counselor-mbugua", name: "Counselor John Mbugua", specialty: "HIV Counseling" },
-    ],
-    tuberculosis: [
-      { id: "dr-mwangi", name: "Dr. Peter Mwangi", specialty: "TB Treatment" },
-      { id: "nurse-wambui", name: "Nurse Lucy Wambui", specialty: "TB Care" },
-    ],
-    immunization: [
-      { id: "nurse-mutua", name: "Nurse Sarah Mutua", specialty: "Immunization" },
-      { id: "nurse-kiprotich", name: "Nurse Agnes Kiprotich", specialty: "Child Health" },
-    ],
-    laboratory: [
-      { id: "lab-tech-kimani", name: "Lab Tech David Kimani", specialty: "Medical Laboratory" },
-      { id: "lab-tech-wanjiru", name: "Lab Tech Rose Wanjiru", specialty: "Clinical Laboratory" },
-    ],
+    curative: allDoctors,
+    maternity: allDoctors,
+    antenatal: allDoctors,
+    "family-planning": allDoctors,
+    "hiv-aids": allDoctors,
+    tuberculosis: allDoctors,
+    immunization: allDoctors,
+    laboratory: allDoctors,
   }
 
   const timeSlots = [
-    "9:00 AM",
-    "9:30 AM",
-    "10:00 AM",
-    "10:30 AM",
-    "11:00 AM",
-    "11:30 AM",
-    "2:00 PM",
-    "2:30 PM",
-    "3:00 PM",
-    "3:30 PM",
-    "4:00 PM",
-    "4:30 PM",
+    "9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM",
+    "2:00 PM", "2:30 PM", "3:00 PM", "3:30 PM", "4:00 PM", "4:30 PM",
   ]
 
   const today = startOfDay(new Date())
-  const maxDate = addDays(today, 90) // Allow booking up to 90 days in advance
+  const maxDate = addDays(today, 90)
+  const isDateDisabled = (date: Date) => isBefore(date, today) || isBefore(maxDate, date)
 
-  const isDateDisabled = (date: Date) => {
-    return isBefore(date, today) || isBefore(maxDate, date)
+  const currentDoctor = allDoctors.find(d => String(d.id) === selectedDoctor)
+  const currentDepartmentInfo = departments.find(d => d.id === selectedDepartment)
+
+  const startNewBooking = () => {
+    setBookingSuccess(null)
+    setStep(1)
+    setSelectedDate(undefined)
+    setSelectedTime("")
+    setSelectedDepartment("")
+    setSelectedDoctor("")
+    setPatientInfo({ reason: "", notes: "" })
   }
 
-  const handleNext = () => {
-    if (step < 4) setStep(step + 1)
-  }
+  const handleGoToDashboard = () => router.push('/dashboard')
+  const handleNext = () => { if (step < 4) setStep(step + 1) }
+  const handleBack = () => { if (step > 1) setStep(step - 1) }
 
-  const handleBack = () => {
-    if (step > 1) setStep(step - 1)
-  }
-
-  const handleBooking = () => {
-    const booking = {
-      department: selectedDepartment,
-      doctor: selectedDoctor,
-      date: selectedDate,
-      time: selectedTime,
-      reason: patientInfo.reason,
-      notes: patientInfo.notes,
+  // -------------------------- Booking Handler --------------------------
+  const handleBooking = async () => {
+    if (!selectedDoctor || !selectedDate || !selectedTime) {
+      alert("Please fill in all required fields.")
+      return
     }
-    onBookingComplete?.(booking)
-    alert("Appointment booked successfully!")
+
+    const numericPatientId = Number(patientId)
+    if (isNaN(numericPatientId)) {
+      console.error("❌ Invalid patient ID:", patientId)
+      alert("Invalid patient information. Please contact support.")
+      return
+    }
+
+    const currentDoctorInfo = doctors[selectedDepartment as keyof typeof doctors]?.find(
+      doctor => Number(doctor.id) === Number(selectedDoctor)
+    )
+    const currentDepartmentInfo = departments.find(
+      dept => dept.id === selectedDepartment
+    )
+
+    if (!currentDoctorInfo) {
+      console.error("❌ Doctor not found for selected ID:", selectedDoctor)
+      alert("Selected doctor not found. Please try again.")
+      return
+    }
+
+    if (!currentDepartmentInfo) {
+      console.error("❌ Department not found for selected ID:", selectedDepartment)
+      alert("Selected department not found. Please try again.")
+      return
+    }
+
+    setIsSubmitting(true)
+    onBookingStart?.()
+
+    try {
+      const year = selectedDate.getFullYear()
+      const month = String(selectedDate.getMonth() + 1).padStart(2, "0")
+      const day = String(selectedDate.getDate()).padStart(2, "0")
+      const appointmentDate = `${year}-${month}-${day}`
+
+      const appointmentData = {
+        patient_id: numericPatientId,
+        doctor_id: Number(selectedDoctor),
+        appointment_date: appointmentDate,
+        appointment_time: selectedTime,
+        status: "scheduled",
+      }
+
+      console.log("📋 Sending to backend:", appointmentData)
+      const result = await bookAppointment(appointmentData)
+      console.log("✅ Backend result:", result)
+
+      const bookingConfirmation = {
+        doctor_name: currentDoctorInfo.name,
+        doctor_specialty: currentDoctorInfo.specialty,
+        department: currentDepartmentInfo.name,
+        appointment_date: appointmentDate,
+        appointment_time: selectedTime,
+        patient_id: numericPatientId,
+        ...result,
+      }
+
+      console.log("🎉 Booking confirmed:", bookingConfirmation)
+      setBookingSuccess(bookingConfirmation)
+      onBookingComplete?.(bookingConfirmation)
+
+      setTimeout(() => {
+        if (bookingSuccess) router.push('/dashboard')
+      }, 8000)
+
+    } catch (error: any) {
+      console.error("❌ Booking failed:", error)
+      let errorMessage = "Failed to book appointment. Please try again."
+      if (error.message?.includes("Network") || error.message?.includes("fetch")) {
+        errorMessage = "Network error. Please check your connection."
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message
+      } else if (error.message) {
+        errorMessage = error.message
+      }
+      alert(`❌ ${errorMessage}`)
+      onBookingError?.(error)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
+  // -------------------------- Conditional Render --------------------------
+  if (bookingSuccess) return <BookingSuccess booking={bookingSuccess} onNewBooking={startNewBooking} />
+  if (!user) return (
+    <Card className="w-full max-w-2xl mx-auto">
+      <CardContent className="p-6 text-center">
+        <div className="flex items-center justify-center gap-2">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <p>Loading user information...</p>
+        </div>
+      </CardContent>
+    </Card>
+  )
+  if (user.role !== "patient") return (
+    <Card className="w-full max-w-2xl mx-auto">
+      <CardContent className="p-6 text-center">
+        <p className="text-muted-foreground">Please log in as a patient to book an appointment.</p>
+        <p className="text-sm text-muted-foreground mt-2">Current role: {user.role}</p>
+      </CardContent>
+    </Card>
+  )
+  if (!patientId) return (
+    <Card className="w-full max-w-2xl mx-auto">
+      <CardContent className="p-6 text-center">
+        <p className="text-red-600">Unable to identify patient. Please contact support.</p>
+        <p className="text-sm text-muted-foreground mt-2">User ID: {user?.id}</p>
+      </CardContent>
+    </Card>
+  )
+
+  // -------------------------- Main Render --------------------------
   return (
     <Card className="w-full max-w-2xl mx-auto">
       <CardHeader>
@@ -124,7 +327,17 @@ export function AppointmentBookingWidget({ onBookingComplete }: AppointmentBooki
           <CalendarIcon className="w-5 h-5" />
           Book Appointment
         </CardTitle>
-        <CardDescription>Schedule your visit in a few simple steps</CardDescription>
+        <CardDescription>
+          Schedule your visit in a few simple steps
+          <div className="text-xs mt-1 text-green-600">
+            Logged in as: {user.name} (Patient ID: {patientId})
+          </div>
+          <div className="mt-2">
+            <Button variant="outline" size="sm" onClick={handleGoToDashboard} className="text-xs">
+              <ArrowLeft className="w-3 h-3 mr-1" /> Back to Dashboard
+            </Button>
+          </div>
+        </CardDescription>
 
         {/* Progress Indicator */}
         <div className="flex items-center justify-between mt-4">
@@ -132,22 +345,22 @@ export function AppointmentBookingWidget({ onBookingComplete }: AppointmentBooki
             <div key={stepNumber} className="flex items-center">
               <div
                 className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium",
-                  step >= stepNumber ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+                  "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium border-2",
+                  step >= stepNumber
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-muted text-muted-foreground border-muted"
                 )}
               >
                 {step > stepNumber ? <CheckCircle className="w-4 h-4" /> : stepNumber}
               </div>
-              {stepNumber < 4 && (
-                <div className={cn("w-12 h-px mx-2", step > stepNumber ? "bg-primary" : "bg-muted")} />
-              )}
+              {stepNumber < 4 && <div className={cn("w-12 h-1 mx-2", step > stepNumber ? "bg-primary" : "bg-muted")} />}
             </div>
           ))}
         </div>
       </CardHeader>
 
       <CardContent className="space-y-6">
-        {/* Step 1: Department Selection */}
+        {/* Step 1: Department */}
         {step === 1 && (
           <div className="space-y-4">
             <div>
@@ -163,10 +376,10 @@ export function AppointmentBookingWidget({ onBookingComplete }: AppointmentBooki
                   className={cn(
                     "p-4 border rounded-lg text-left transition-colors",
                     selectedDepartment === dept.id
-                      ? "border-primary bg-primary/5"
+                      ? "border-primary bg-primary/5 ring-2 ring-primary/20"
                       : dept.available
-                        ? "border-border hover:border-primary/50"
-                        : "border-muted bg-muted/50 cursor-not-allowed",
+                      ? "border-border hover:border-primary/50 hover:bg-accent/50"
+                      : "border-muted bg-muted/50 cursor-not-allowed"
                   )}
                 >
                   <div className="flex items-center justify-between">
@@ -176,187 +389,101 @@ export function AppointmentBookingWidget({ onBookingComplete }: AppointmentBooki
                 </button>
               ))}
             </div>
-            <Button onClick={handleNext} disabled={!selectedDepartment} className="w-full">
-              Continue
-            </Button>
+            <Button onClick={handleNext} disabled={!selectedDepartment} className="w-full">Continue</Button>
           </div>
         )}
 
-        {/* Step 2: Doctor Selection */}
+        {/* Step 2: Doctor */}
         {step === 2 && (
           <div className="space-y-4">
             <div>
               <h3 className="text-lg font-semibold mb-2">Select Doctor</h3>
               <p className="text-sm text-muted-foreground mb-4">Choose your preferred healthcare provider</p>
             </div>
-            <div className="grid gap-3">
-              {doctors[selectedDepartment as keyof typeof doctors]?.map((doctor) => (
-                <button
-                  key={doctor.id}
-                  onClick={() => setSelectedDoctor(doctor.id)}
-                  className={cn(
-                    "p-4 border rounded-lg text-left transition-colors",
-                    selectedDoctor === doctor.id
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50",
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                      <User className="w-5 h-5 text-primary" />
-                    </div>
-                    <div>
-                      <p className="font-medium">{doctor.name}</p>
-                      <p className="text-sm text-muted-foreground">{doctor.specialty}</p>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={handleBack} className="flex-1 bg-transparent">
-                Back
-              </Button>
-              <Button onClick={handleNext} disabled={!selectedDoctor} className="flex-1">
-                Continue
-              </Button>
-            </div>
+            <Select value={selectedDoctor} onValueChange={setSelectedDoctor}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a doctor" />
+              </SelectTrigger>
+              <SelectContent>
+                {doctors[selectedDepartment as keyof typeof doctors]?.map((doc) => (
+                  <SelectItem key={doc.id} value={String(doc.id)}>
+                    {doc.name} ({doc.specialty})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button onClick={handleBack} variant="outline">Back</Button>
+            <Button onClick={handleNext} disabled={!selectedDoctor}>Continue</Button>
           </div>
         )}
 
-        {/* Step 3: Date & Time Selection */}
+        {/* Step 3: Date & Time */}
         {step === 3 && (
           <div className="space-y-4">
             <div>
               <h3 className="text-lg font-semibold mb-2">Select Date & Time</h3>
-              <p className="text-sm text-muted-foreground mb-4">Choose your preferred appointment slot</p>
             </div>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="w-full justify-start text-left">
+                  {selectedDate ? format(selectedDate, "PPP") : "Pick a date"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={setSelectedDate}
+                  disabled={isDateDisabled}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
 
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label>Select Date</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !selectedDate && "text-muted-foreground",
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={selectedDate}
-                      onSelect={setSelectedDate}
-                      disabled={isDateDisabled}
-                      initialFocus
-                      defaultMonth={today}
-                    />
-                  </PopoverContent>
-                </Popover>
-                <p className="text-xs text-muted-foreground">Appointments available for the next 90 days</p>
-              </div>
+            <Select value={selectedTime} onValueChange={setSelectedTime}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a time" />
+              </SelectTrigger>
+              <SelectContent>
+                {timeSlots.map((time) => (
+                  <SelectItem key={time} value={time}>{time}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-              <div className="space-y-2">
-                <Label>Select Time</Label>
-                <Select value={selectedTime} onValueChange={setSelectedTime}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Choose time" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {timeSlots.map((time) => (
-                      <SelectItem key={time} value={time}>
-                        <div className="flex items-center gap-2">
-                          <Clock className="w-4 h-4" />
-                          {time}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={handleBack} className="flex-1 bg-transparent">
-                Back
-              </Button>
-              <Button onClick={handleNext} disabled={!selectedDate || !selectedTime} className="flex-1">
-                Continue
-              </Button>
-            </div>
+            <Button onClick={handleBack} variant="outline">Back</Button>
+            <Button onClick={handleNext} disabled={!selectedDate || !selectedTime}>Continue</Button>
           </div>
         )}
 
-        {/* Step 4: Additional Information */}
+        {/* Step 4: Reason & Notes */}
         {step === 4 && (
           <div className="space-y-4">
             <div>
-              <h3 className="text-lg font-semibold mb-2">Additional Information</h3>
-              <p className="text-sm text-muted-foreground mb-4">Provide details about your visit</p>
+              <h3 className="text-lg font-semibold mb-2">Reason for Visit</h3>
+              <p className="text-sm text-muted-foreground mb-4">Provide a brief description of your appointment reason</p>
             </div>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="reason">Reason for Visit *</Label>
-                <Input
-                  id="reason"
-                  value={patientInfo.reason}
-                  onChange={(e) => setPatientInfo((prev) => ({ ...prev, reason: e.target.value }))}
-                  placeholder="Brief description of your concern"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="notes">Additional Notes (Optional)</Label>
-                <Input
-                  id="notes"
-                  value={patientInfo.notes}
-                  onChange={(e) => setPatientInfo((prev) => ({ ...prev, notes: e.target.value }))}
-                  placeholder="Any additional information"
-                />
-              </div>
+            <div className="grid gap-3">
+              <Label htmlFor="reason">Reason</Label>
+              <Input
+                id="reason"
+                placeholder="Enter reason for visit"
+                value={patientInfo.reason}
+                onChange={(e) => setPatientInfo({ ...patientInfo, reason: e.target.value })}
+              />
+              <Label htmlFor="notes">Notes (Optional)</Label>
+              <Input
+                id="notes"
+                placeholder="Any additional notes"
+                value={patientInfo.notes}
+                onChange={(e) => setPatientInfo({ ...patientInfo, notes: e.target.value })}
+              />
             </div>
-
-            {/* Booking Summary */}
-            <Card className="bg-muted/50">
-              <CardHeader>
-                <CardTitle className="text-lg">Appointment Summary</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Department:</span>
-                  <span className="font-medium">{departments.find((d) => d.id === selectedDepartment)?.name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Doctor:</span>
-                  <span className="font-medium">
-                    {doctors[selectedDepartment as keyof typeof doctors]?.find((d) => d.id === selectedDoctor)?.name}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Date:</span>
-                  <span className="font-medium">{selectedDate && format(selectedDate, "PPP")}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Time:</span>
-                  <span className="font-medium">{selectedTime}</span>
-                </div>
-              </CardContent>
-            </Card>
-
             <div className="flex gap-2">
-              <Button variant="outline" onClick={handleBack} className="flex-1 bg-transparent">
-                Back
-              </Button>
-              <Button onClick={handleBooking} disabled={!patientInfo.reason} className="flex-1">
-                Book Appointment
+              <Button onClick={handleBack} variant="outline" className="flex-1">Back</Button>
+              <Button onClick={handleBooking} className="flex-1" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                Confirm Appointment
               </Button>
             </div>
           </div>
