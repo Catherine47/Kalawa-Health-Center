@@ -17,7 +17,7 @@ router.get("/", authenticate, async (req, res) => {
     if (req.user.role === "doctor") {
       // Doctor sees drugs related to prescriptions they issued
       result = await pool.query(
-        `SELECT pd.*
+        `SELECT pd.*, p.patient_id, p.doctor_id
          FROM prescription_drugs pd
          JOIN prescriptions p ON pd.prescription_id = p.prescription_id
          WHERE p.doctor_id = $1 AND pd.deleted_at IS NULL
@@ -27,7 +27,7 @@ router.get("/", authenticate, async (req, res) => {
     } else if (req.user.role === "patient") {
       // Patient sees drugs for their own prescriptions
       result = await pool.query(
-        `SELECT pd.*
+        `SELECT pd.*, p.patient_id, p.doctor_id
          FROM prescription_drugs pd
          JOIN prescriptions p ON pd.prescription_id = p.prescription_id
          WHERE p.patient_id = $1 AND pd.deleted_at IS NULL
@@ -37,15 +37,16 @@ router.get("/", authenticate, async (req, res) => {
     } else {
       // Admin can view all prescription drugs
       result = await pool.query(
-        `SELECT * FROM prescription_drugs
-         WHERE deleted_at IS NULL
-         ORDER BY drug_id ASC`
+        `SELECT pd.*, p.patient_id, p.doctor_id
+         FROM prescription_drugs pd
+         JOIN prescriptions p ON pd.prescription_id = p.prescription_id
+         WHERE pd.deleted_at IS NULL
+         ORDER BY pd.drug_id ASC`
       );
     }
 
     res.json({
-      performed_by: req.user.username,
-      role: req.user.role,
+      success: true,
       prescription_drugs: result.rows,
     });
   } catch (err) {
@@ -81,8 +82,7 @@ router.get("/:id", authenticate, async (req, res) => {
     }
 
     res.json({
-      performed_by: req.user.username,
-      role: req.user.role,
+      success: true,
       prescription_drug: drug,
     });
   } catch (err) {
@@ -93,7 +93,7 @@ router.get("/:id", authenticate, async (req, res) => {
 
 // ------------------------ ADD A NEW PRESCRIPTION DRUG ------------------------
 router.post("/", authenticate, async (req, res) => {
-  const { prescription_id, drug_name, dosage, duration } = req.body;
+  const { prescription_id, drug_name, dosage, duration, instructions } = req.body;
 
   try {
     // Only doctors can add drugs to prescriptions
@@ -118,16 +118,15 @@ router.post("/", authenticate, async (req, res) => {
         .json({ error: "Cannot add drug to another doctor's prescription" });
 
     const result = await pool.query(
-      `INSERT INTO prescription_drugs (prescription_id, drug_name, dosage, duration, created_by)
+      `INSERT INTO prescription_drugs (prescription_id, drug_name, dosage, duration, instructions)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [prescription_id, drug_name, dosage, duration, req.user.username]
+      [prescription_id, drug_name, dosage, duration, instructions]
     );
 
     res.status(201).json({
+      success: true,
       message: "Prescription drug added successfully",
-      performed_by: req.user.username,
-      role: req.user.role,
       prescription_drug: result.rows[0],
     });
   } catch (err) {
@@ -139,7 +138,7 @@ router.post("/", authenticate, async (req, res) => {
 // ------------------------ UPDATE PRESCRIPTION DRUG ------------------------
 router.put("/:id", authenticate, async (req, res) => {
   const { id } = req.params;
-  const { drug_name, dosage, duration } = req.body;
+  const { drug_name, dosage, duration, instructions } = req.body;
 
   try {
     // Verify prescription drug exists
@@ -162,16 +161,15 @@ router.put("/:id", authenticate, async (req, res) => {
 
     const result = await pool.query(
       `UPDATE prescription_drugs
-       SET drug_name = $1, dosage = $2, duration = $3, updated_at = NOW(), updated_by = $4
+       SET drug_name = $1, dosage = $2, duration = $3, instructions = $4, updated_at = NOW()
        WHERE drug_id = $5
        RETURNING *`,
-      [drug_name, dosage, duration, req.user.username, id]
+      [drug_name, dosage, duration, instructions, id]
     );
 
     res.json({
+      success: true,
       message: "Prescription drug updated successfully",
-      performed_by: req.user.username,
-      role: req.user.role,
       prescription_drug: result.rows[0],
     });
   } catch (err) {
@@ -204,15 +202,14 @@ router.delete("/:id", authenticate, async (req, res) => {
 
     await pool.query(
       `UPDATE prescription_drugs
-       SET deleted_at = NOW(), deleted_by = $1
-       WHERE drug_id = $2`,
-      [req.user.username, id]
+       SET deleted_at = NOW()
+       WHERE drug_id = $1`,
+      [id]
     );
 
     res.json({
+      success: true,
       message: "Prescription drug soft-deleted successfully",
-      performed_by: req.user.username,
-      role: req.user.role,
     });
   } catch (err) {
     console.error("❌ Error deleting prescription_drug:", err.message);
@@ -227,10 +224,10 @@ router.put("/restore/:id", authenticate, async (req, res) => {
   try {
     const result = await pool.query(
       `UPDATE prescription_drugs
-       SET deleted_at = NULL, updated_at = NOW(), updated_by = $1
-       WHERE drug_id = $2 AND deleted_at IS NOT NULL
+       SET deleted_at = NULL, updated_at = NOW()
+       WHERE drug_id = $1 AND deleted_at IS NOT NULL
        RETURNING *`,
-      [req.user.username, id]
+      [id]
     );
 
     if (!result.rows.length)
@@ -239,9 +236,8 @@ router.put("/restore/:id", authenticate, async (req, res) => {
         .json({ message: "Prescription drug not found or not deleted" });
 
     res.json({
+      success: true,
       message: "Prescription drug restored successfully",
-      performed_by: req.user.username,
-      role: req.user.role,
       prescription_drug: result.rows[0],
     });
   } catch (err) {

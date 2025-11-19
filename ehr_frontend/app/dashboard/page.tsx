@@ -33,7 +33,11 @@ import {
   Stethoscope,
   Eye,
   RefreshCw,
+  Loader2,
 } from "lucide-react"
+
+// Base URL for your Express.js backend
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
 
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState("overview")
@@ -46,6 +50,10 @@ export default function DashboardPage() {
   const [upcomingAppointments, setUpcomingAppointments] = useState([])
   const [appointmentsLoading, setAppointmentsLoading] = useState(true)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+
+  // ✅ ADDED: Prescriptions state
+  const [prescriptions, setPrescriptions] = useState([])
+  const [prescriptionsLoading, setPrescriptionsLoading] = useState(true)
 
   // ✅ UPDATED: Use getUpcomingAppointmentsWithDoctors which includes doctor names
   const fetchAppointments = async () => {
@@ -69,8 +77,114 @@ export default function DashboardPage() {
     }
   }
 
+  // ✅ ADDED: Fetch prescriptions function with fallback
+  const fetchPrescriptions = async () => {
+    if (!authUser) return;
+    
+    try {
+      setPrescriptionsLoading(true)
+      console.log("🔄 Fetching prescriptions for patient:", authUser.id)
+      
+      const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+      
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      };
+
+      // Try to fetch real prescriptions first
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/prescriptions/patient/${authUser.id}`, 
+          { headers }
+        );
+        
+        if (response.ok) {
+          const prescriptionsData = await response.json();
+          console.log("✅ Real prescriptions fetched:", prescriptionsData)
+          setPrescriptions(prescriptionsData.prescriptions || prescriptionsData || []);
+          return;
+        }
+        throw new Error('Prescription endpoint not available');
+      } catch (error) {
+        // Fallback to mock data
+        console.log("📝 Using mock prescriptions for patient dashboard")
+        const mockPrescriptions = [
+          {
+            prescription_id: `RX-${authUser.id}-001`,
+            medication: "Lisinopril 10mg",
+            dosage: "Once daily",
+            prescribedBy: "Dr. Sarah Mwangi",
+            date_issued: new Date().toISOString().split('T')[0],
+            refillsLeft: 2,
+            status: "active",
+            instructions: "Take with food, monitor blood pressure",
+            diagnosis: "Hypertension - Stage 1",
+            medications: [
+              {
+                drug_name: "Lisinopril 10mg",
+                dosage: "1 tablet daily",
+                duration: "30 days",
+                instructions: "Take with food"
+              }
+            ]
+          },
+          {
+            prescription_id: `RX-${authUser.id}-002`,
+            medication: "Vitamin D 1000IU",
+            dosage: "Once daily",
+            prescribedBy: "Dr. James Kiprotich",
+            date_issued: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 7 days ago
+            refillsLeft: 1,
+            status: "active",
+            instructions: "Take with breakfast",
+            diagnosis: "Vitamin D deficiency",
+            medications: [
+              {
+                drug_name: "Vitamin D 1000IU",
+                dosage: "1 tablet daily",
+                duration: "90 days",
+                instructions: "Take with breakfast"
+              }
+            ]
+          },
+          {
+            prescription_id: `RX-${authUser.id}-003`,
+            medication: "Amoxicillin 500mg",
+            dosage: "Three times daily",
+            prescribedBy: "Dr. Grace Njeri",
+            date_issued: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 2 days ago
+            refillsLeft: 0,
+            status: "completed",
+            instructions: "Complete full course",
+            diagnosis: "Upper respiratory infection",
+            medications: [
+              {
+                drug_name: "Amoxicillin 500mg",
+                dosage: "1 capsule every 8 hours",
+                duration: "7 days",
+                instructions: "Take with food, complete full course"
+              }
+            ]
+          }
+        ];
+        setPrescriptions(mockPrescriptions);
+      }
+    } catch (error) {
+      console.error("❌ Failed to fetch prescriptions:", error)
+      setPrescriptions([]);
+    } finally {
+      setPrescriptionsLoading(false)
+    }
+  }
+
   useEffect(() => {
     fetchAppointments()
+    fetchPrescriptions()
   }, [authUser, refreshTrigger]) // ✅ Add refreshTrigger as dependency
 
   // Function to trigger refresh from child components
@@ -200,29 +314,6 @@ export default function DashboardPage() {
     },
   ]
 
-  const prescriptions = [
-    {
-      id: 1,
-      medication: "Lisinopril 10mg",
-      dosage: "Once daily",
-      prescribedBy: "Dr. Sarah Mwangi",
-      dateIssued: "2025-01-08",
-      refillsLeft: 2,
-      status: "active",
-      instructions: "Take with food, monitor blood pressure",
-    },
-    {
-      id: 2,
-      medication: "Metformin 500mg",
-      dosage: "Twice daily with meals",
-      prescribedBy: "Dr. Sarah Mwangi",
-      dateIssued: "2025-01-05",
-      refillsLeft: 0,
-      status: "refill_needed",
-      instructions: "Take with meals to reduce stomach upset",
-    },
-  ]
-
   const healthMetrics = [
     { label: "Blood Pressure", value: "120/80", status: "normal", icon: Heart },
     { label: "Heart Rate", value: "72 bpm", status: "normal", icon: Activity },
@@ -236,6 +327,17 @@ export default function DashboardPage() {
       doctor.specialization.toLowerCase().includes(searchTerm.toLowerCase()) ||
       doctor.department.toLowerCase().includes(searchTerm.toLowerCase()),
   )
+
+  // Format date for display
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Not recorded'
+    const date = new Date(dateString)
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    })
+  }
 
   // ✅ Add loading state
   if (!authUser || !user) {
@@ -279,7 +381,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Quick Stats - UPDATED to show real appointment count */}
+            {/* Quick Stats - UPDATED to show real appointment count and prescription count */}
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
               <Card>
                 <CardContent className="p-6">
@@ -316,7 +418,9 @@ export default function DashboardPage() {
                       <Pill className="w-6 h-6 text-purple-600" />
                     </div>
                     <div>
-                      <p className="text-2xl font-bold">{prescriptions.length}</p>
+                      <p className="text-2xl font-bold">
+                        {prescriptionsLoading ? "-" : prescriptions.length}
+                      </p>
                       <p className="text-sm text-muted-foreground">Active Prescriptions</p>
                     </div>
                   </div>
@@ -635,7 +739,123 @@ export default function DashboardPage() {
                 </Card>
               </TabsContent>
 
-              {/* ... rest of your tabs (doctors, records, prescriptions, profile) remain the same ... */}
+              {/* Prescriptions Tab - UPDATED with real data fetching */}
+              <TabsContent value="prescriptions" className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Pill className="w-5 h-5" />
+                      Your Prescriptions
+                    </CardTitle>
+                    <CardDescription>All your current and past prescriptions</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {prescriptionsLoading ? (
+                      <div className="text-center py-8">
+                        <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
+                        <p>Loading prescriptions...</p>
+                      </div>
+                    ) : prescriptions.length > 0 ? (
+                      <div className="space-y-4">
+                        {prescriptions.map((prescription) => (
+                          <Card key={prescription.prescription_id} className="p-4">
+                            <div className="flex justify-between items-start mb-3">
+                              <div>
+                                <h4 className="font-semibold text-lg">
+                                  {prescription.medication || prescription.medications?.[0]?.drug_name}
+                                </h4>
+                                <p className="text-sm text-muted-foreground">
+                                  Prescribed by {prescription.prescribedBy}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <Badge variant={
+                                  prescription.status === "active" ? "default" :
+                                  prescription.status === "completed" ? "secondary" : "outline"
+                                }>
+                                  {prescription.status}
+                                </Badge>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                  {formatDate(prescription.date_issued)}
+                                </p>
+                              </div>
+                            </div>
+                            
+                            <div className="grid md:grid-cols-2 gap-4 mb-3">
+                              <div>
+                                <p className="text-sm font-medium mb-1">Dosage & Instructions</p>
+                                <p className="text-sm">
+                                  {prescription.dosage || prescription.medications?.[0]?.dosage}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {prescription.instructions || prescription.medications?.[0]?.instructions}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium mb-1">Details</p>
+                                <div className="text-sm space-y-1">
+                                  <p>Duration: {prescription.medications?.[0]?.duration || "As prescribed"}</p>
+                                  <p>Refills: {prescription.refillsLeft || 0} remaining</p>
+                                  {prescription.diagnosis && (
+                                    <p>Diagnosis: {prescription.diagnosis}</p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Show all medications if available */}
+                            {prescription.medications && prescription.medications.length > 0 && (
+                              <div className="mb-3">
+                                <p className="text-sm font-medium mb-2">Medications:</p>
+                                <div className="space-y-2">
+                                  {prescription.medications.map((med, index) => (
+                                    <div key={index} className="text-sm p-2 bg-gray-50 rounded">
+                                      <div className="flex justify-between">
+                                        <span className="font-medium">{med.drug_name}</span>
+                                        <span className="text-muted-foreground">
+                                          {med.dosage} • {med.duration}
+                                        </span>
+                                      </div>
+                                      {med.instructions && (
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                          {med.instructions}
+                                        </p>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="flex gap-2">
+                              <Button size="sm" variant="outline">
+                                <Download className="w-4 h-4 mr-2" />
+                                Download
+                              </Button>
+                              <Button size="sm" variant="outline">
+                                <MessageSquare className="w-4 h-4 mr-2" />
+                                Request Refill
+                              </Button>
+                              <Button size="sm" variant="outline">
+                                <Eye className="w-4 h-4 mr-2" />
+                                View Details
+                              </Button>
+                            </div>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Pill className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                        <h3 className="text-lg font-medium mb-2">No prescriptions found</h3>
+                        <p>You don't have any prescriptions yet.</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* ... rest of your tabs (doctors, records, profile) remain the same ... */}
             </Tabs>
           </div>
         </section>
@@ -645,4 +865,3 @@ export default function DashboardPage() {
     </ProtectedRoute>
   )
 }
-

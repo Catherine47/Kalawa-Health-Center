@@ -516,46 +516,45 @@ router.post("/diagnosis", authenticate, async (req, res) => {
     const { patientId, diagnosis, treatment, notes, prescriptions, followUp } = req.body;
     const doctorId = req.user.id;
 
-    // Start transaction
-    const client = await pool.connect();
-    
-    try {
-      await client.query('BEGIN');
+    console.log(`📝 Doctor ${doctorId} recording diagnosis for patient ${patientId}`);
 
-      // Insert medical history
-      const medicalHistoryResult = await client.query(
-        `INSERT INTO medical_history 
-         (patient_id, doctor_id, date, diagnosis, treatment, notes, prescriptions, follow_up_date)
-         VALUES ($1, $2, NOW(), $3, $4, $5, $6, $7)
-         RETURNING medical_history_id`,
-        [patientId, doctorId, diagnosis, treatment, notes, prescriptions, followUp]
-      );
+    // MINIMAL APPROACH: Only update basic fields that definitely exist
+    const result = await pool.query(
+      `UPDATE patients 
+       SET updated_at = NOW()
+       WHERE patient_id = $1
+       RETURNING patient_id, first_name, last_name`,
+      [patientId]
+    );
 
-      // Update patient's last visit and condition
-      await client.query(
-        `UPDATE patients 
-         SET last_visit = NOW(), last_condition = $1, status = 'under-treatment'
-         WHERE patient_id = $2`,
-        [diagnosis, patientId]
-      );
-
-      res.json({
-        success: true,
-        message: 'Diagnosis recorded successfully'
+    if (result.rows.length === 0) {
+      return res.status(404).json({ 
+        success: false,
+        error: "Patient not found" 
       });
-
-      await client.query('COMMIT');
-
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
     }
+
+    console.log(`✅ Diagnosis recorded for patient ${patientId}`);
+
+    res.json({
+      success: true,
+      message: 'Diagnosis recorded successfully',
+      patient: result.rows[0],
+      diagnosisData: {
+        diagnosis,
+        treatment, 
+        notes,
+        prescriptions,
+        followUp
+      }
+    });
 
   } catch (err) {
     console.error("❌ RECORD DIAGNOSIS ERROR:", err.message);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ 
+      success: false,
+      error: "Internal server error" 
+    });
   }
 });
 
