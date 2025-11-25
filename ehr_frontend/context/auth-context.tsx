@@ -20,6 +20,7 @@ export interface User {
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string, role: UserRole) => Promise<boolean>;
+  register: (userData: any) => Promise<boolean>;
   logout: () => void;
   isLoading: boolean;
   isAuthenticated: boolean;
@@ -71,6 +72,20 @@ async function apiCall(endpoint: string, options: any = {}) {
   }
 }
 
+// ✅ CORRECTED: Determine correct registration endpoint based on role
+const getRegistrationEndpoint = (role: UserRole): string => {
+  switch (role) {
+    case "patient":
+      return "/api/patients/register";
+    case "doctor":
+      return "/api/doctors/register";
+    case "admin":
+      return "/api/admin/register";
+    default:
+      throw new Error(`Invalid role: ${role}`);
+  }
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true); // Start as true for initial load
@@ -98,6 +113,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     loadUserFromStorage();
   }, []);
+
+  // ✅ CORRECTED: Enhanced register function with proper endpoint handling
+  const register = async (userData: any): Promise<boolean> => {
+    setIsLoading(true);
+
+    try {
+      const { role, email_address, password, first_name, last_name, phone_number, dob, gender, specialization, username } = userData;
+
+      // ✅ Use the corrected endpoint function
+      const endpoint = getRegistrationEndpoint(role);
+
+      console.log(`📤 Registering ${role} at endpoint: ${endpoint}`);
+
+      const response = await apiCall(endpoint, {
+        method: "POST",
+        body: {
+          email_address,
+          password,
+          first_name,
+          last_name,
+          phone_number,
+          ...(role === "patient" && { dob, gender }),
+          ...(role === "doctor" && { specialization }),
+          ...(role === "admin" && { username }),
+        },
+      });
+
+      console.log(`[AuthContext] ${role} registration response:`, response);
+
+      // ✅ Handle ALL possible success responses from your backend
+      if (response && (
+          response.message?.includes("successful") ||
+          response.message?.includes("Registration successful") ||
+          response.success === true ||
+          response.patient !== undefined ||
+          response.doctor !== undefined ||
+          response.admin !== undefined
+      )) {
+        console.log(`[AuthContext] ${role} registration successful!`);
+        return true;
+      }
+
+      // ❌ If we get here, registration failed
+      const errorMessage = response?.error || response?.message || "Registration failed without specific error";
+      throw new Error(errorMessage);
+
+    } catch (error: any) {
+      console.error("[AuthContext] Registration error:", error.message || error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // ✅ Enhanced login function with better error handling
   const login = async (email: string, password: string, role: UserRole): Promise<boolean> => {
@@ -180,6 +248,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value: AuthContextType = {
     user,
     login,
+    register,
     logout,
     isLoading,
     isAuthenticated: !!user,

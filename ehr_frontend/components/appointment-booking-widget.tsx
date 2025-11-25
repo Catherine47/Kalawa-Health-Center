@@ -16,6 +16,15 @@ import { useAuth } from "@/context/auth-context"
 import { bookAppointment } from "@/context/api-client"
 import { useRouter } from "next/navigation"
 
+interface Doctor {
+  id: number;
+  first_name: string;
+  last_name: string;
+  specialization: string;
+  email: string;
+  phone: string;
+}
+
 interface AppointmentBookingWidgetProps {
   onBookingComplete?: (booking: any) => void
   onBookingError?: (error: any) => void
@@ -125,6 +134,8 @@ export function AppointmentBookingWidget({
   const [patientInfo, setPatientInfo] = useState({ reason: "", notes: "" })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [bookingSuccess, setBookingSuccess] = useState<any>(null)
+  const [doctors, setDoctors] = useState<Doctor[]>([])
+  const [loadingDoctors, setLoadingDoctors] = useState(false)
 
   const patientId = user?.patientId || user?.id || user?.userId
 
@@ -139,42 +150,6 @@ export function AppointmentBookingWidget({
     { id: "laboratory", name: "Laboratory Services", available: true },
   ]
 
-  const allDoctors = [
-    { id: 1, name: "Dr. Ian Mwangi", specialty: "Dermatologist" },
-    { id: 2, name: "Dr. Ruth Mutua", specialty: "General Practitioner" },
-    { id: 3, name: "Dr. Laban Nzau", specialty: "Cardiologist" },
-    { id: 4, name: "Dr. Mercy Kibet", specialty: "Gynecologist" },
-    { id: 5, name: "Dr. John Otieno", specialty: "Neurologist" },
-    { id: 6, name: "Dr. Raphael Mwanzia", specialty: "Radiologist" },
-    { id: 7, name: "Dr. Ann Kamau", specialty: "Psychiatrist" },
-    { id: 8, name: "Dr. Andrew Mogaka", specialty: "General Practitioner" },
-    { id: 9, name: "Dr. Catherine Muendo", specialty: "Nutritionist" },
-    { id: 10, name: "Dr. Bramuel Ombati", specialty: "Surgeon" },
-    { id: 11, name: "Faith Mwangi", specialty: "Cardiologist" },
-    { id: 12, name: "Japheth Kiragu", specialty: "Dermatologist" },
-    { id: 14, name: "Dr. Brian Kariuki", specialty: "Orthopedic Surgeon" },
-    { id: 15, name: "Dr. John Kamau", specialty: "Surgeon" },
-    { id: 17, name: "John Mutua", specialty: "Pediatrics" },
-    { id: 21, name: "Dr. David Johnson", specialty: "Cardiology" },
-    { id: 22, name: "Dr. Kanyi Kamau", specialty: "Surgeon" },
-    { id: 23, name: "Dr. Mutunga Koech", specialty: "Surgeon" },
-    { id: 24, name: "Dr. Muthee Ikamati", specialty: "Pediatrician" },
-    { id: 25, name: "Dr. Waweru Kimani", specialty: "Neurologist" },
-    { id: 26, name: "Dr. Kibe Karua", specialty: "Dermatologist" },
-    { id: 27, name: "Dr. Waweru Bosire", specialty: "Neurologist" },
-  ]
-
-  const doctors = {
-    curative: allDoctors,
-    maternity: allDoctors,
-    antenatal: allDoctors,
-    "family-planning": allDoctors,
-    "hiv-aids": allDoctors,
-    tuberculosis: allDoctors,
-    immunization: allDoctors,
-    laboratory: allDoctors,
-  }
-
   const timeSlots = [
     "9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM",
     "2:00 PM", "2:30 PM", "3:00 PM", "3:30 PM", "4:00 PM", "4:30 PM",
@@ -184,8 +159,33 @@ export function AppointmentBookingWidget({
   const maxDate = addDays(today, 90)
   const isDateDisabled = (date: Date) => isBefore(date, today) || isBefore(maxDate, date)
 
-  const currentDoctor = allDoctors.find(d => String(d.id) === selectedDoctor)
+  const currentDoctor = doctors.find(d => String(d.id) === selectedDoctor)
   const currentDepartmentInfo = departments.find(d => d.id === selectedDepartment)
+
+  // ✅ NEW: Fetch available doctors from API
+  useEffect(() => {
+    const fetchDoctors = async () => {
+      setLoadingDoctors(true)
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+        const response = await fetch(`${baseUrl}/api/doctors/public/available`)
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+        
+        const doctorsData = await response.json()
+        setDoctors(doctorsData)
+        console.log(`✅ Loaded ${doctorsData.length} doctors for appointment booking`)
+      } catch (error) {
+        console.error("Error fetching doctors:", error)
+      } finally {
+        setLoadingDoctors(false)
+      }
+    }
+
+    fetchDoctors()
+  }, [])
 
   const startNewBooking = () => {
     setBookingSuccess(null)
@@ -215,7 +215,7 @@ export function AppointmentBookingWidget({
       return
     }
 
-    const currentDoctorInfo = doctors[selectedDepartment as keyof typeof doctors]?.find(
+    const currentDoctorInfo = doctors.find(
       doctor => Number(doctor.id) === Number(selectedDoctor)
     )
     const currentDepartmentInfo = departments.find(
@@ -256,8 +256,8 @@ export function AppointmentBookingWidget({
       console.log("✅ Backend result:", result)
 
       const bookingConfirmation = {
-        doctor_name: currentDoctorInfo.name,
-        doctor_specialty: currentDoctorInfo.specialty,
+        doctor_name: `Dr. ${currentDoctorInfo.first_name} ${currentDoctorInfo.last_name}`,
+        doctor_specialty: currentDoctorInfo.specialization,
         department: currentDepartmentInfo.name,
         appointment_date: appointmentDate,
         appointment_time: selectedTime,
@@ -400,20 +400,38 @@ export function AppointmentBookingWidget({
               <h3 className="text-lg font-semibold mb-2">Select Doctor</h3>
               <p className="text-sm text-muted-foreground mb-4">Choose your preferred healthcare provider</p>
             </div>
-            <Select value={selectedDoctor} onValueChange={setSelectedDoctor}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a doctor" />
-              </SelectTrigger>
-              <SelectContent>
-                {doctors[selectedDepartment as keyof typeof doctors]?.map((doc) => (
-                  <SelectItem key={doc.id} value={String(doc.id)}>
-                    {doc.name} ({doc.specialty})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button onClick={handleBack} variant="outline">Back</Button>
-            <Button onClick={handleNext} disabled={!selectedDoctor}>Continue</Button>
+            
+            {loadingDoctors ? (
+              <div className="flex items-center justify-center p-8">
+                <Loader2 className="w-6 h-6 animate-spin mr-2" />
+                <p>Loading available doctors...</p>
+              </div>
+            ) : doctors.length === 0 ? (
+              <div className="text-center p-8 text-muted-foreground">
+                <p>No doctors available at the moment.</p>
+                <p className="text-sm mt-2">Please check back later or contact the administration.</p>
+              </div>
+            ) : (
+              <Select value={selectedDoctor} onValueChange={setSelectedDoctor}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a doctor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {doctors.map((doctor) => (
+                    <SelectItem key={doctor.id} value={String(doctor.id)}>
+                      Dr. {doctor.first_name} {doctor.last_name} - {doctor.specialization}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            
+            <div className="flex gap-2">
+              <Button onClick={handleBack} variant="outline">Back</Button>
+              <Button onClick={handleNext} disabled={!selectedDoctor || loadingDoctors || doctors.length === 0}>
+                Continue
+              </Button>
+            </div>
           </div>
         )}
 
@@ -451,8 +469,10 @@ export function AppointmentBookingWidget({
               </SelectContent>
             </Select>
 
-            <Button onClick={handleBack} variant="outline">Back</Button>
-            <Button onClick={handleNext} disabled={!selectedDate || !selectedTime}>Continue</Button>
+            <div className="flex gap-2">
+              <Button onClick={handleBack} variant="outline">Back</Button>
+              <Button onClick={handleNext} disabled={!selectedDate || !selectedTime}>Continue</Button>
+            </div>
           </div>
         )}
 

@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import Link from "next/link"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useAuth } from "@/context/auth-context"
-import { getUpcomingAppointmentsWithDoctors } from "@/context/api-client" // ✅ CHANGED: Use the new function
+import { getUpcomingAppointmentsWithDoctors } from "@/context/api-client"
 import {
   Calendar,
   FileText,
@@ -34,10 +34,25 @@ import {
   Eye,
   RefreshCw,
   Loader2,
+  Users,
 } from "lucide-react"
 
 // Base URL for your Express.js backend
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
+
+interface Doctor {
+  doctor_id: number
+  first_name: string
+  last_name: string
+  specialization: string
+  email: string
+  phone_number: string
+  availability_status: string
+  consultation_fee: number
+  experience_years: number
+  bio: string
+  profile_picture: string
+}
 
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState("overview")
@@ -54,6 +69,16 @@ export default function DashboardPage() {
   // ✅ ADDED: Prescriptions state
   const [prescriptions, setPrescriptions] = useState([])
   const [prescriptionsLoading, setPrescriptionsLoading] = useState(true)
+
+  // ✅ ADDED: Medical Records state
+  const [medicalRecords, setMedicalRecords] = useState([])
+  const [medicalRecordsLoading, setMedicalRecordsLoading] = useState(true)
+  const [recentResults, setRecentResults] = useState([])
+
+  // ✅ ADDED: Available Doctors state
+  const [availableDoctors, setAvailableDoctors] = useState<Doctor[]>([])
+  const [availableDoctorsCount, setAvailableDoctorsCount] = useState(0)
+  const [doctorsLoading, setDoctorsLoading] = useState(true)
 
   // ✅ UPDATED: Use getUpcomingAppointmentsWithDoctors which includes doctor names
   const fetchAppointments = async () => {
@@ -182,10 +207,174 @@ export default function DashboardPage() {
     }
   }
 
+  // ✅ UPDATED: Fetch medical records from backend API with better debugging
+  const fetchMedicalRecords = async () => {
+    if (!authUser) {
+      console.log('❌ No auth user in fetchMedicalRecords');
+      return;
+    }
+    
+    try {
+      setMedicalRecordsLoading(true);
+      console.log("🔄 Fetching medical records from API for patient:", authUser.id);
+      
+      const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+      
+      if (!token) {
+        console.log('❌ No token found');
+        throw new Error('No authentication token found');
+      }
+
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      };
+
+      const apiUrl = `${API_BASE_URL}/medical_records/patient/${authUser.id}`;
+      console.log('🌐 Making request to:', apiUrl);
+
+      const response = await fetch(apiUrl, { headers });
+      
+      console.log('📥 Response status:', response.status);
+      console.log('📥 Response OK:', response.ok);
+      
+      if (response.ok) {
+        const recordsData = await response.json();
+        console.log("📦 FULL API RESPONSE:", recordsData);
+        
+        // ✅ ADDED: Better response structure checking
+        if (recordsData && recordsData.success !== false) {
+          const records = recordsData.records || recordsData;
+          
+          if (Array.isArray(records) && records.length > 0) {
+            console.log(`✅ Setting ${records.length} medical records`);
+            setMedicalRecords(records);
+            
+            const recentResults = records
+              .slice(0, 3)
+              .map(record => ({
+                id: record.id,
+                test: `${record.record_type} - ${record.diagnosis}`,
+                date: record.record_date,
+                status: "completed",
+                doctor: record.doctor_name,
+                results: record.treatment,
+                downloadUrl: "#",
+              }));
+            
+            setRecentResults(recentResults);
+          } else {
+            console.log('ℹ️ No records array found or empty array');
+            setMedicalRecords([]);
+            setRecentResults([]);
+          }
+        } else {
+          console.log('❌ API returned success: false or invalid response');
+          setMedicalRecords([]);
+          setRecentResults([]);
+        }
+      } else {
+        console.log("❌ API request failed");
+        const errorText = await response.text();
+        console.log("❌ Error response:", errorText);
+        setMedicalRecords([]);
+        setRecentResults([]);
+      }
+      
+    } catch (error) {
+      console.error("❌ Failed to fetch medical records:", error);
+      setMedicalRecords([]);
+      setRecentResults([]);
+    } finally {
+      setMedicalRecordsLoading(false);
+    }
+  };
+
+  // ✅ ADDED: Fetch available doctors count
+  const fetchAvailableDoctorsCount = async () => {
+    try {
+      const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+      
+      const response = await fetch(`${API_BASE_URL}/patients/available-doctors/count`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setAvailableDoctorsCount(data.available_doctors || 0);
+        console.log(`✅ Available doctors count: ${data.available_doctors}`);
+      } else {
+        console.error('❌ Failed to fetch doctors count:', response.status);
+        setAvailableDoctorsCount(0);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching doctors count:', error);
+      setAvailableDoctorsCount(0);
+    }
+  };
+
+  // ✅ ADDED: Fetch available doctors list
+  const fetchAvailableDoctors = async () => {
+    try {
+      setDoctorsLoading(true);
+      const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+      
+      const response = await fetch(`${API_BASE_URL}/patients/available-doctors`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setAvailableDoctors(data.available_doctors || []);
+        console.log(`✅ Loaded ${data.available_doctors.length} available doctors`);
+      } else {
+        console.error('❌ Failed to fetch doctors list:', response.status);
+        setAvailableDoctors([]);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching doctors list:', error);
+      setAvailableDoctors([]);
+    } finally {
+      setDoctorsLoading(false);
+    }
+  };
+
+  // ✅ ADDED: Main data fetching function
+  const fetchAllData = async () => {
+    try {
+      await Promise.all([
+        fetchAppointments(),
+        fetchPrescriptions(),
+        fetchMedicalRecords(),
+        fetchAvailableDoctorsCount(),
+        fetchAvailableDoctors(),
+      ]);
+    } catch (error) {
+      console.error('Error fetching patient data:', error);
+    }
+  };
+
   useEffect(() => {
-    fetchAppointments()
-    fetchPrescriptions()
-  }, [authUser, refreshTrigger]) // ✅ Add refreshTrigger as dependency
+    fetchAllData();
+  }, [authUser, refreshTrigger]); // ✅ Add refreshTrigger as dependency
+
+  // ✅ ADDED: Auto-refresh available doctors every 30 seconds
+  useEffect(() => {
+    if (authUser?.role !== 'patient') return;
+
+    const interval = setInterval(() => {
+      fetchAvailableDoctorsCount();
+      fetchAvailableDoctors();
+    }, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [authUser]);
 
   // Function to trigger refresh from child components
   const handleRefreshAppointments = () => {
@@ -202,118 +391,6 @@ export default function DashboardPage() {
     emergencyContact: "Jane Doe - (555) 987-6543", // You can add this to your User type
   } : null
 
-  const availableDoctors = [
-    {
-      id: 1,
-      name: "Dr. Sarah Mwangi",
-      specialization: "General Medicine",
-      department: "Curative Services",
-      availability: "Mon-Fri 8:00 AM - 4:00 PM",
-      experience: "8 years",
-      status: "available",
-      nextAvailable: "Today 2:00 PM",
-    },
-    {
-      id: 2,
-      name: "Dr. James Kiprotich",
-      specialization: "Maternal Health",
-      department: "Maternity Services",
-      availability: "Mon-Sat 7:00 AM - 3:00 PM",
-      experience: "12 years",
-      status: "available",
-      nextAvailable: "Tomorrow 9:00 AM",
-    },
-    {
-      id: 3,
-      name: "Dr. Grace Njeri",
-      specialization: "Pediatrics",
-      department: "Child Health",
-      availability: "Tue-Sat 9:00 AM - 5:00 PM",
-      experience: "6 years",
-      status: "busy",
-      nextAvailable: "Friday 10:00 AM",
-    },
-    {
-      id: 4,
-      name: "Dr. Peter Wanjiku",
-      specialization: "Laboratory Medicine",
-      department: "Laboratory Services",
-      availability: "Mon-Fri 6:00 AM - 2:00 PM",
-      experience: "10 years",
-      status: "available",
-      nextAvailable: "Today 11:00 AM",
-    },
-  ]
-
-  const medicalRecords = [
-    {
-      id: 1,
-      date: "2025-01-08",
-      type: "Consultation",
-      doctor: "Dr. Sarah Mwangi",
-      diagnosis: "Hypertension - Stage 1",
-      treatment: "Lifestyle modifications, ACE inhibitor prescribed",
-      notes: "Blood pressure: 145/92. Patient advised on diet and exercise.",
-      prescriptions: ["Lisinopril 10mg daily"],
-      labResults: ["Blood pressure monitoring"],
-      followUp: "2025-02-08",
-    },
-    {
-      id: 2,
-      date: "2025-01-05",
-      type: "Lab Results",
-      doctor: "Dr. Peter Wanjiku",
-      diagnosis: "Complete Blood Count - Normal",
-      treatment: "No treatment required",
-      notes: "All blood parameters within normal range.",
-      prescriptions: [],
-      labResults: ["CBC: Normal", "Blood glucose: 95 mg/dL"],
-      followUp: "2025-07-05",
-    },
-    {
-      id: 3,
-      date: "2025-01-03",
-      type: "Vaccination",
-      doctor: "Dr. Grace Njeri",
-      diagnosis: "Routine Immunization",
-      treatment: "Tetanus booster administered",
-      notes: "No adverse reactions observed. Next booster due in 10 years.",
-      prescriptions: [],
-      labResults: [],
-      followUp: "2035-01-03",
-    },
-  ]
-
-  const recentResults = [
-    {
-      id: 1,
-      test: "Blood Work - Complete Panel",
-      date: "2025-01-08",
-      status: "completed",
-      doctor: "Dr. Peter Wanjiku",
-      results: "All parameters normal",
-      downloadUrl: "#",
-    },
-    {
-      id: 2,
-      test: "Chest X-Ray",
-      date: "2025-01-05",
-      status: "completed",
-      doctor: "Dr. Sarah Mwangi",
-      results: "Clear lungs, no abnormalities",
-      downloadUrl: "#",
-    },
-    {
-      id: 3,
-      test: "ECG",
-      date: "2025-01-03",
-      status: "pending",
-      doctor: "Dr. Sarah Mwangi",
-      results: "Awaiting results",
-      downloadUrl: null,
-    },
-  ]
-
   const healthMetrics = [
     { label: "Blood Pressure", value: "120/80", status: "normal", icon: Heart },
     { label: "Heart Rate", value: "72 bpm", status: "normal", icon: Activity },
@@ -321,15 +398,8 @@ export default function DashboardPage() {
     { label: "BMI", value: "24.2", status: "normal", icon: Activity },
   ]
 
-  const filteredDoctors = availableDoctors.filter(
-    (doctor) =>
-      doctor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      doctor.specialization.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      doctor.department.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
-
   // Format date for display
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: string) => {
     if (!dateString) return 'Not recorded'
     const date = new Date(dateString)
     return date.toLocaleDateString('en-US', {
@@ -381,7 +451,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Quick Stats - UPDATED to show real appointment count and prescription count */}
+            {/* Quick Stats - UPDATED to show real counts */}
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
               <Card>
                 <CardContent className="p-6">
@@ -405,7 +475,9 @@ export default function DashboardPage() {
                       <FileText className="w-6 h-6 text-green-600" />
                     </div>
                     <div>
-                      <p className="text-2xl font-bold">{medicalRecords.length}</p>
+                      <p className="text-2xl font-bold">
+                        {medicalRecordsLoading ? "-" : medicalRecords.length}
+                      </p>
                       <p className="text-sm text-muted-foreground">Medical Records</p>
                     </div>
                   </div>
@@ -430,11 +502,14 @@ export default function DashboardPage() {
                 <CardContent className="p-6">
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                      <Stethoscope className="w-6 h-6 text-orange-600" />
+                      <Users className="w-6 h-6 text-orange-600" />
                     </div>
                     <div>
-                      <p className="text-2xl font-bold">{availableDoctors.length}</p>
+                      <p className="text-2xl font-bold">{availableDoctorsCount}</p>
                       <p className="text-sm text-muted-foreground">Available Doctors</p>
+                      <p className="text-xs text-green-600 mt-1">
+                        {availableDoctorsCount > 0 ? '✅ Ready for appointments' : '❌ No doctors available'}
+                      </p>
                     </div>
                   </div>
                 </CardContent>
@@ -443,13 +518,12 @@ export default function DashboardPage() {
 
             {/* Main Content with Tabs */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-              <TabsList className="grid w-full grid-cols-6">
+              <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="doctors">Doctors</TabsTrigger>
                 <TabsTrigger value="appointments">Appointments</TabsTrigger>
+                <TabsTrigger value="doctors">Available Doctors</TabsTrigger>
                 <TabsTrigger value="records">Medical Records</TabsTrigger>
                 <TabsTrigger value="prescriptions">Prescriptions</TabsTrigger>
-                <TabsTrigger value="profile">Profile</TabsTrigger>
               </TabsList>
 
               {/* Overview Tab */}
@@ -603,33 +677,40 @@ export default function DashboardPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Recent Activity</CardTitle>
-                    <CardDescription>Your latest test results and prescriptions</CardDescription>
+                    <CardDescription>Your latest consultations and treatments</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
-                      {medicalRecords.slice(0, 3).map((record) => (
-                        <div key={record.id} className="flex items-center gap-4 p-4 border rounded-lg">
-                          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                            <FileText className="w-5 h-5 text-blue-600" />
+                    {medicalRecordsLoading ? (
+                      <div className="text-center py-4">
+                        <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
+                        <p>Loading medical records...</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {medicalRecords.slice(0, 3).map((record) => (
+                          <div key={record.id} className="flex items-center gap-4 p-4 border rounded-lg">
+                            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                              <FileText className="w-5 h-5 text-blue-600" />
+                            </div>
+                            <div className="flex-1">
+                              <h4 className="font-semibold">{record.record_type}</h4>
+                              <p className="text-sm text-muted-foreground">by {record.doctor_name}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-medium">{formatDate(record.record_date)}</p>
+                              <Badge variant={record.record_type === "Consultation" ? "default" : "secondary"}>
+                                {record.record_type}
+                              </Badge>
+                            </div>
                           </div>
-                          <div className="flex-1">
-                            <h4 className="font-semibold">{record.type}</h4>
-                            <p className="text-sm text-muted-foreground">by {record.doctor}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm font-medium">{record.date}</p>
-                            <Badge variant={record.type === "Consultation" ? "default" : "secondary"}>
-                              {record.type}
-                            </Badge>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>
 
-              {/* Appointments Tab - You can add a dedicated appointments view here */}
+              {/* Appointments Tab */}
               <TabsContent value="appointments" className="space-y-6">
                 <Card>
                   <CardHeader>
@@ -733,6 +814,244 @@ export default function DashboardPage() {
                             Book Your First Appointment
                           </Link>
                         </Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* ✅ ADDED: Available Doctors Tab */}
+              <TabsContent value="doctors" className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Available Doctors</CardTitle>
+                    <CardDescription>
+                      Browse and book appointments with available doctors
+                    </CardDescription>
+                    <div className="flex justify-between items-center">
+                      <div className="text-sm text-muted-foreground">
+                        {availableDoctorsCount} doctors available for appointments
+                      </div>
+                      <Button 
+                        onClick={() => {
+                          fetchAvailableDoctorsCount();
+                          fetchAvailableDoctors();
+                        }} 
+                        variant="outline" 
+                        size="sm"
+                        disabled={doctorsLoading}
+                      >
+                        <RefreshCw className={`w-4 h-4 mr-2 ${doctorsLoading ? 'animate-spin' : ''}`} />
+                        Refresh
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {doctorsLoading ? (
+                      <div className="text-center py-8">
+                        <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
+                        <p>Loading available doctors...</p>
+                      </div>
+                    ) : availableDoctors.length > 0 ? (
+                      <div className="space-y-4">
+                        {availableDoctors.map((doctor) => (
+                          <div key={doctor.doctor_id} className="flex items-center justify-between p-4 border rounded-lg">
+                            <div className="flex items-center gap-4">
+                              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                                <Stethoscope className="w-6 h-6 text-blue-600" />
+                              </div>
+                              <div>
+                                <h3 className="font-semibold">Dr. {doctor.first_name} {doctor.last_name}</h3>
+                                <p className="text-sm text-muted-foreground">{doctor.specialization}</p>
+                                <div className="flex gap-4 text-xs text-muted-foreground mt-1">
+                                  <span>Experience: {doctor.experience_years} years</span>
+                                  <span>Fee: ${doctor.consultation_fee}</span>
+                                  {doctor.bio && (
+                                    <span className="max-w-xs truncate">{doctor.bio}</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <Badge variant="default" className="bg-green-100 text-green-800">
+                                Available
+                              </Badge>
+                              <Button size="sm" asChild>
+                                <Link href={`/appointments?doctor=${doctor.doctor_id}`}>
+                                  Book Appointment
+                                </Link>
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                        <p>No doctors available at the moment.</p>
+                        <p className="text-sm">Please check back later.</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Medical Records Tab - UPDATED with real API data */}
+              <TabsContent value="records" className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Medical Records</CardTitle>
+                    <CardDescription>Your complete medical history and consultations</CardDescription>
+                    <div className="flex justify-end">
+                      <Button 
+                        onClick={fetchMedicalRecords} 
+                        variant="outline" 
+                        size="sm"
+                        disabled={medicalRecordsLoading}
+                      >
+                        <RefreshCw className={`w-4 h-4 mr-2 ${medicalRecordsLoading ? 'animate-spin' : ''}`} />
+                        Refresh Records
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {medicalRecordsLoading ? (
+                      <div className="text-center py-8">
+                        <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
+                        <p>Loading medical records...</p>
+                      </div>
+                    ) : medicalRecords.length > 0 ? (
+                      <div className="space-y-6">
+                        {/* Summary Section */}
+                        <div className="border rounded-lg p-4">
+                          <h3 className="text-lg font-semibold mb-3">Health Summary</h3>
+                          <div className="grid md:grid-cols-2 gap-4">
+                            <div>
+                              <p className="text-sm font-medium">Current Conditions</p>
+                              <ul className="text-sm text-muted-foreground mt-1">
+                                {medicalRecords
+                                  .filter(record => record.diagnosis && !record.diagnosis.includes('Vaccination'))
+                                  .slice(0, 3)
+                                  .map((record, index) => (
+                                    <li key={index}>• {record.diagnosis}</li>
+                                  ))
+                                }
+                                {medicalRecords.filter(record => record.diagnosis && !record.diagnosis.includes('Vaccination')).length === 0 && (
+                                  <li>No current conditions recorded</li>
+                                )}
+                              </ul>
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">Recent Activity</p>
+                              <ul className="text-sm text-muted-foreground mt-1">
+                                {medicalRecords.slice(0, 3).map((record, index) => (
+                                  <li key={index}>• {record.record_type} ({formatDate(record.record_date)})</li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Medical History */}
+                        <div>
+                          <h3 className="text-lg font-semibold mb-4">Medical History</h3>
+                          <div className="space-y-4">
+                            {medicalRecords.map((record) => (
+                              <Card key={record.id}>
+                                <CardContent className="p-4">
+                                  <div className="flex justify-between items-start mb-3">
+                                    <div>
+                                      <h4 className="font-semibold">{record.record_type}</h4>
+                                      <p className="text-sm text-muted-foreground">
+                                        {formatDate(record.record_date)} • {record.doctor_name}
+                                        {record.doctor_specialization && ` • ${record.doctor_specialization}`}
+                                      </p>
+                                    </div>
+                                    <Badge variant={
+                                      record.record_type === "Consultation" ? "default" :
+                                      record.record_type === "Follow-up" ? "secondary" : "outline"
+                                    }>
+                                      {record.record_type}
+                                    </Badge>
+                                  </div>
+                                  
+                                  <div className="grid md:grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                      <p className="font-medium mb-1">Diagnosis</p>
+                                      <p className="text-muted-foreground">{record.diagnosis}</p>
+                                    </div>
+                                    <div>
+                                      <p className="font-medium mb-1">Treatment</p>
+                                      <p className="text-muted-foreground">{record.treatment}</p>
+                                    </div>
+                                  </div>
+                                  
+                                  {record.notes && (
+                                    <div className="mt-3">
+                                      <p className="font-medium mb-1 text-sm">Notes</p>
+                                      <p className="text-sm text-muted-foreground">{record.notes}</p>
+                                    </div>
+                                  )}
+                                  
+                                  {record.follow_up_date && (
+                                    <div className="mt-3 pt-3 border-t">
+                                      <p className="font-medium mb-1 text-sm">Follow-up</p>
+                                      <p className="text-sm text-muted-foreground">
+                                        Scheduled for {formatDate(record.follow_up_date)}
+                                      </p>
+                                    </div>
+                                  )}
+                                </CardContent>
+                              </Card>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Test Results */}
+                        <div>
+                          <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
+                          <div className="space-y-3">
+                            {recentResults.map((result) => (
+                              <div key={result.id} className="flex items-center justify-between p-4 border rounded-lg">
+                                <div className="flex items-center gap-4">
+                                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                                    result.status === "completed" ? "bg-green-100" : "bg-yellow-100"
+                                  }`}>
+                                    <FileText className={`w-5 h-5 ${
+                                      result.status === "completed" ? "text-green-600" : "text-yellow-600"
+                                    }`} />
+                                  </div>
+                                  <div>
+                                    <h4 className="font-semibold">{result.test}</h4>
+                                    <p className="text-sm text-muted-foreground">
+                                      {formatDate(result.date)} • {result.doctor}
+                                    </p>
+                                    <p className="text-sm">{result.results}</p>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <Badge variant={
+                                    result.status === "completed" ? "default" : "secondary"
+                                  }>
+                                    {result.status}
+                                  </Badge>
+                                  {result.downloadUrl && (
+                                    <Button size="sm" variant="outline" className="mt-2">
+                                      <Download className="w-4 h-4 mr-2" />
+                                      Download
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                        <h3 className="text-lg font-medium mb-2">No medical records found</h3>
+                        <p>Your medical records will appear here after your first consultation.</p>
                       </div>
                     )}
                   </CardContent>
@@ -854,8 +1173,6 @@ export default function DashboardPage() {
                   </CardContent>
                 </Card>
               </TabsContent>
-
-              {/* ... rest of your tabs (doctors, records, profile) remain the same ... */}
             </Tabs>
           </div>
         </section>

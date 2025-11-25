@@ -32,6 +32,7 @@ import patientRoutes from "./routes/patientRoutes.js";
 import appointmentRoutes from "./routes/appointmentRoutes.js";
 import prescriptionRoutes from "./routes/prescriptionRoutes.js";
 import prescriptionDrugsRoutes from "./routes/prescriptionDrugsRoutes.js";
+import medicalRecordsRoutes from './routes/medicalRecords.js';
 import authRoutes from "./routes/authRoutes.js"; // ✅ OTP/auth route
 
 // ✅ Root route
@@ -61,6 +62,7 @@ app.use("/api/patients", patientRoutes);
 app.use("/api/appointments", appointmentRoutes);
 app.use("/api/prescriptions", prescriptionRoutes);
 app.use("/api/prescription_drugs", prescriptionDrugsRoutes);
+app.use('/api/medical_records', medicalRecordsRoutes);
 app.use("/api/auth", authRoutes);
 
 // ✅ Catch-all route (for debugging 404s)

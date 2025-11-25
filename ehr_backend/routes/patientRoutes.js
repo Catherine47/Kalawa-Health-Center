@@ -13,6 +13,66 @@ const router = express.Router();
 // ✅ Generate random 6-digit OTP
 const generateOTP = () => crypto.randomInt(100000, 999999).toString();
 
+// ------------------------ GET AVAILABLE DOCTORS COUNT (PATIENTS ONLY) ------------------------
+router.get("/available-doctors/count", authenticate, async (req, res) => {
+  try {
+    if (req.user.role !== "patient") {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    // Count active doctors - REMOVED availability_status filter
+    const result = await pool.query(
+      `SELECT COUNT(*) as available_doctors_count
+       FROM doctors 
+       WHERE is_deleted = false`
+    );
+
+    const count = parseInt(result.rows[0].available_doctors_count);
+
+    res.json({
+      success: true,
+      available_doctors: count,
+      last_updated: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error("❌ Error fetching available doctors count:", err.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ------------------------ GET AVAILABLE DOCTORS LIST (PATIENTS ONLY) ------------------------
+router.get("/available-doctors", authenticate, async (req, res) => {
+  try {
+    if (req.user.role !== "patient") {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    // REMOVED: availability_status filter and extra columns
+    const result = await pool.query(
+      `SELECT 
+        doctor_id,
+        first_name,
+        last_name,
+        specialization,
+        email_address as email,
+        phone_number
+       FROM doctors 
+       WHERE is_deleted = false
+       ORDER BY first_name, last_name`
+    );
+
+    res.json({
+      success: true,
+      available_doctors: result.rows,
+      total_count: result.rows.length,
+      last_updated: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error("❌ Error fetching available doctors:", err.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ------------------------ GET ALL PATIENTS (ADMIN & DOCTORS ONLY) ------------------------
 router.get("/", authenticate, async (req, res) => {
   // ✅ ALLOW: Admins and Doctors to view all patients
@@ -33,7 +93,10 @@ router.get("/", authenticate, async (req, res) => {
           p.email_address, 
           p.phone_number,
           p.dob,
-          p.gender
+          p.gender,
+          p.is_verified,
+          p.created_at,
+          p.updated_at
          FROM patients p
          INNER JOIN appointments a ON p.patient_id = a.patient_id
          WHERE p.is_deleted = false 
@@ -42,10 +105,21 @@ router.get("/", authenticate, async (req, res) => {
         [req.user.id]
       );
     } else {
-      // Admins can see all patients
+      // Admins can see all patients WITH ALL REQUIRED FIELDS
       result = await pool.query(
-        `SELECT patient_id, first_name, last_name, email_address, phone_number 
-         FROM patients WHERE is_deleted = false
+        `SELECT 
+          patient_id, 
+          first_name, 
+          last_name, 
+          email_address, 
+          phone_number,
+          dob,
+          gender,
+          is_verified,
+          created_at,
+          updated_at
+         FROM patients 
+         WHERE is_deleted = false
          ORDER BY first_name, last_name`
       );
     }
