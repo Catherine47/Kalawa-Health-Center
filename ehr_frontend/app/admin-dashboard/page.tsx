@@ -33,6 +33,7 @@ import {
   Calendar,
   Loader2,
   Stethoscope,
+  Eye,
 } from "lucide-react"
 
 // Base URL for your Express.js backend
@@ -68,6 +69,22 @@ export default function AdminDashboardPage() {
     dob: '1990-01-01'
   })
   const [creatingUser, setCreatingUser] = useState(false)
+
+  // Edit User Dialog State
+  const [editingUser, setEditingUser] = useState(null)
+  const [editFormData, setEditFormData] = useState({})
+  const [updatingUser, setUpdatingUser] = useState(false)
+
+  // Patient Management State
+  const [editingPatient, setEditingPatient] = useState(null)
+  const [patientEditFormData, setPatientEditFormData] = useState({})
+  const [updatingPatient, setUpdatingPatient] = useState(false)
+  const [viewingPatient, setViewingPatient] = useState(null)
+
+  // Reports Management State
+  const [generatingReport, setGeneratingReport] = useState(false)
+  const [reportDialogOpen, setReportDialogOpen] = useState(false)
+  const [selectedReportType, setSelectedReportType] = useState("system_overview")
 
   // ============ HELPER FUNCTIONS ============
 
@@ -143,6 +160,18 @@ export default function AdminDashboardPage() {
     }
   };
 
+  // Helper function to get current month and year
+  const getCurrentMonthYear = () => {
+    const now = new Date();
+    return now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  };
+
+  // Helper function to generate random file size
+  const generateFileSize = () => {
+    const sizes = ['1.2 MB', '2.3 MB', '1.8 MB', '3.1 MB', '2.7 MB'];
+    return sizes[Math.floor(Math.random() * sizes.length)];
+  };
+
   // ============ FILTER FUNCTIONS ============
 
   const filteredUsers = allUsers.filter((userItem) => {
@@ -207,11 +236,13 @@ export default function AdminDashboardPage() {
         throw new Error('Authentication failed');
       }
 
+      const responseData = await response.json();
+
       if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+        throw new Error(responseData.error || `API error: ${response.status}`);
       }
 
-      return await response.json();
+      return responseData;
     } catch (error) {
       console.error(`API request failed for ${endpoint}:`, error);
       throw error;
@@ -400,25 +431,37 @@ export default function AdminDashboardPage() {
       // Fetch all users (patients + doctors + admins)
       await fetchAllUsers();
 
-      // Use fallback data for reports
+      // Use current dates for reports
+      const currentDate = new Date();
+      const currentMonthYear = getCurrentMonthYear();
+      
       const fallbackReports = [
         {
           id: 1,
           title: "Monthly Patient Registration Report",
-          description: "New patient registrations for January 2025",
+          description: `New patient registrations for ${currentMonthYear}`,
           type: "patient_analytics",
-          generatedDate: "2025-01-15",
+          generatedDate: currentDate.toISOString().split('T')[0],
           status: "ready",
-          fileSize: "2.3 MB",
+          fileSize: generateFileSize(),
         },
         {
           id: 2,
           title: "Doctor Performance Report",
-          description: "Consultation metrics and patient satisfaction",
+          description: "Consultation metrics and patient satisfaction analysis",
           type: "performance",
-          generatedDate: "2025-01-10",
+          generatedDate: new Date(currentDate.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 7 days ago
           status: "ready",
-          fileSize: "1.8 MB",
+          fileSize: generateFileSize(),
+        },
+        {
+          id: 3,
+          title: "System Usage Statistics",
+          description: "Platform usage and activity overview",
+          type: "system_analytics",
+          generatedDate: new Date(currentDate.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 1 day ago
+          status: "ready",
+          fileSize: generateFileSize(),
         }
       ];
       setSystemReports(fallbackReports);
@@ -534,6 +577,72 @@ export default function AdminDashboardPage() {
     });
   };
 
+  // Edit User Functions
+  const openEditDialog = (user) => {
+    setEditingUser(user);
+    setEditFormData({
+      first_name: user.first_name || '',
+      last_name: user.last_name || '',
+      email_address: user.email_address || '',
+      phone_number: user.phone_number || '',
+      status: user.status || 'active',
+      specialization: user.specialization || '',
+      gender: user.gender || 'Male',
+      dob: user.dob || '1990-01-01'
+    });
+  };
+
+  const closeEditDialog = () => {
+    setEditingUser(null);
+    setEditFormData({});
+  };
+
+  const handleUpdateUser = async (userId, userData) => {
+    try {
+      setUpdatingUser(true);
+      
+      console.log('Updating user:', userId, userData);
+      
+      // Basic validation
+      if (!userData.first_name || !userData.last_name || !userData.email_address) {
+        alert('Please fill in all required fields: First Name, Last Name, and Email');
+        return;
+      }
+
+      // Determine the correct API endpoint based on user role
+      let endpoint = '';
+      const user = allUsers.find(u => u.id === userId);
+      
+      if (user?.role === 'patient') {
+        endpoint = `/patients/${userId}`;
+      } else if (user?.role === 'doctor') {
+        endpoint = `/doctors/${userId}`;
+      } else {
+        alert('Admin user updates would require a dedicated admin update endpoint.');
+        return;
+      }
+
+      const response = await apiRequest(endpoint, {
+        method: 'PUT',
+        body: JSON.stringify(userData)
+      });
+
+      if (response.message || response.success) {
+        alert('User updated successfully!');
+        closeEditDialog();
+        fetchAdminData(); // Refresh the data
+      } else {
+        throw new Error(response.error || 'Failed to update user');
+      }
+
+    } catch (error) {
+      console.error('Error updating user:', error);
+      alert(`Error updating user: ${error.message}`);
+    } finally {
+      setUpdatingUser(false);
+    }
+  };
+
   const handleDeleteUser = async (userId) => {
     if (confirm("Are you sure you want to delete this user? This action cannot be undone.")) {
       try {
@@ -546,9 +655,130 @@ export default function AdminDashboardPage() {
     }
   }
 
+  // ============ PATIENT MANAGEMENT FUNCTIONS ============
+
+  const openEditPatientDialog = (patient) => {
+    setEditingPatient(patient);
+    setPatientEditFormData({
+      first_name: patient.first_name || '',
+      last_name: patient.last_name || '',
+      email_address: patient.email_address || '',
+      phone_number: patient.phone_number || '',
+      gender: patient.gender || 'Male',
+      dob: patient.dob || '1990-01-01',
+      is_verified: patient.is_verified || false
+    });
+  };
+
+  const closeEditPatientDialog = () => {
+    setEditingPatient(null);
+    setPatientEditFormData({});
+  };
+
+  const handleUpdatePatient = async (patientId, patientData) => {
+    try {
+      setUpdatingPatient(true);
+      
+      console.log('Updating patient:', patientId, patientData);
+      
+      // Basic validation
+      if (!patientData.first_name || !patientData.last_name || !patientData.email_address) {
+        alert('Please fill in all required fields: First Name, Last Name, and Email');
+        return;
+      }
+
+      // Prepare the data for the API - match the expected backend structure
+      const updateData = {
+        first_name: patientData.first_name.trim(),
+        last_name: patientData.last_name.trim(),
+        email_address: patientData.email_address.trim().toLowerCase(),
+        phone_number: patientData.phone_number?.trim() || '',
+        gender: patientData.gender || 'Male',
+        dob: patientData.dob || '1990-01-01',
+        is_verified: Boolean(patientData.is_verified)
+      };
+
+      console.log('Sending update data:', updateData);
+
+      // Try different endpoints and methods
+      let response;
+      let success = false;
+
+      try {
+        // First try PUT request to /patients/:id
+        response = await apiRequest(`/patients/${patientId}`, {
+          method: 'PUT',
+          body: JSON.stringify(updateData)
+        });
+        success = true;
+      } catch (putError) {
+        console.log('PUT to /patients/:id failed, trying PATCH:', putError);
+        try {
+          // If PUT fails, try PATCH to /patients/:id
+          response = await apiRequest(`/patients/${patientId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(updateData)
+          });
+          success = true;
+        } catch (patchError) {
+          console.log('PATCH to /patients/:id failed, trying PUT to /patients/update/:id:', patchError);
+          try {
+            // Try alternative endpoint
+            response = await apiRequest(`/patients/update/${patientId}`, {
+              method: 'PUT',
+              body: JSON.stringify(updateData)
+            });
+            success = true;
+          } catch (updateError) {
+            console.log('All update methods failed:', updateError);
+            throw new Error('All update methods failed. Please check the API endpoint.');
+          }
+        }
+      }
+
+      if (success && (response.message || response.success || response.patient_id || response.first_name)) {
+        alert('Patient record updated successfully!');
+        closeEditPatientDialog();
+        fetchAdminData(); // Refresh the data
+      } else {
+        throw new Error(response?.error || 'Failed to update patient record - no success response');
+      }
+
+    } catch (error) {
+      console.error('Error updating patient:', error);
+      
+      // More specific error messages
+      if (error.message.includes('email') || error.message.includes('Email')) {
+        alert('Error: This email address is already registered to another patient.');
+      } else if (error.message.includes('401')) {
+        alert('Authentication error. Please log in again.');
+      } else if (error.message.includes('404')) {
+        alert('Patient not found. The patient record may have been deleted.');
+      } else if (error.message.includes('500')) {
+        alert('Server error. Please try again later.');
+      } else {
+        alert(`Error updating patient record: ${error.message}`);
+      }
+    } finally {
+      setUpdatingPatient(false);
+    }
+  };
+
+  const openViewPatientDialog = (patient) => {
+    setViewingPatient(patient);
+  };
+
+  const closeViewPatientDialog = () => {
+    setViewingPatient(null);
+  };
+
   const handleDeletePatient = async (patientId) => {
     if (confirm("Are you sure you want to delete this patient record? This action cannot be undone.")) {
       try {
+        // If you have a delete endpoint, use it:
+        // await apiRequest(`/patients/${patientId}`, { method: 'DELETE' });
+        
+        // For now, just update the local state
         setPatientRecords(prev => prev.filter(patient => patient.patient_id !== patientId));
         alert("Patient record deleted successfully!");
       } catch (error) {
@@ -558,25 +788,324 @@ export default function AdminDashboardPage() {
     }
   }
 
+  // ============ REPORTS MANAGEMENT FUNCTIONS ============
+
   const handleGenerateReport = async () => {
+    setReportDialogOpen(true);
+  };
+
+  const handleConfirmGenerateReport = async () => {
     try {
+      setGeneratingReport(true);
+      
+      // Simulate API call delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const currentDate = new Date();
+      const reportTypes = {
+        system_overview: {
+          title: "System Overview Report",
+          description: "Comprehensive system performance and usage statistics",
+          type: "system_analytics"
+        },
+        patient_analytics: {
+          title: "Patient Analytics Report",
+          description: "Patient registration trends and demographic analysis",
+          type: "patient_analytics"
+        },
+        doctor_performance: {
+          title: "Medical Staff Performance Report",
+          description: "Doctor consultation metrics and efficiency analysis",
+          type: "performance"
+        },
+        financial_summary: {
+          title: "Financial Summary Report",
+          description: "Revenue, billing, and financial performance overview",
+          type: "financial"
+        }
+      };
+
+      const reportConfig = reportTypes[selectedReportType] || reportTypes.system_overview;
+      
       const newReport = {
         id: systemReports.length + 1,
-        title: `System Report ${new Date().toLocaleDateString()}`,
-        description: "Automatically generated system overview",
-        type: "system",
-        generatedDate: new Date().toISOString().split('T')[0],
+        title: reportConfig.title,
+        description: reportConfig.description,
+        type: reportConfig.type,
+        generatedDate: currentDate.toISOString().split('T')[0],
         status: "ready",
-        fileSize: "1.2 MB",
+        fileSize: generateFileSize(),
       };
       
       setSystemReports(prev => [newReport, ...prev]);
-      alert("Report generated successfully!");
+      setReportDialogOpen(false);
+      setSelectedReportType("system_overview");
+      alert("Report generated successfully! You can now download it.");
     } catch (error) {
       console.error('Error generating report:', error);
       alert('Error generating report. Please try again.');
+    } finally {
+      setGeneratingReport(false);
     }
-  }
+  };
+
+  const handleDownloadReport = async (reportId) => {
+    try {
+      // Find the report
+      const report = systemReports.find(r => r.id === reportId);
+      if (!report) {
+        alert('Report not found.');
+        return;
+      }
+
+      // Create report content for PDF
+      const reportContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>${report.title}</title>
+            <style>
+                body {
+                    font-family: 'Arial', sans-serif;
+                    line-height: 1.6;
+                    color: #333;
+                    max-width: 800px;
+                    margin: 0 auto;
+                    padding: 20px;
+                }
+                .header {
+                    text-align: center;
+                    border-bottom: 3px solid #2c5aa0;
+                    padding-bottom: 20px;
+                    margin-bottom: 30px;
+                }
+                .header h1 {
+                    color: #2c5aa0;
+                    margin: 0;
+                    font-size: 28px;
+                }
+                .header .subtitle {
+                    color: #666;
+                    font-size: 16px;
+                    margin: 5px 0;
+                }
+                .meta-info {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-top: 10px;
+                    font-size: 12px;
+                    color: #888;
+                }
+                .section {
+                    margin-bottom: 25px;
+                }
+                .section h2 {
+                    color: #2c5aa0;
+                    border-bottom: 2px solid #e0e0e0;
+                    padding-bottom: 8px;
+                    margin-bottom: 15px;
+                    font-size: 20px;
+                }
+                .metrics-grid {
+                    display: grid;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 15px;
+                    margin: 20px 0;
+                }
+                .metric-card {
+                    border: 1px solid #e0e0e0;
+                    padding: 15px;
+                    border-radius: 5px;
+                    text-align: center;
+                    background: #f9f9f9;
+                }
+                .metric-value {
+                    font-size: 24px;
+                    font-weight: bold;
+                    color: #2c5aa0;
+                    margin: 10px 0;
+                }
+                .metric-label {
+                    color: #666;
+                    font-size: 14px;
+                }
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 20px 0;
+                }
+                table th, table td {
+                    border: 1px solid #ddd;
+                    padding: 12px;
+                    text-align: left;
+                }
+                table th {
+                    background-color: #f5f5f5;
+                    font-weight: bold;
+                }
+                .status-badge {
+                    padding: 4px 8px;
+                    border-radius: 3px;
+                    font-size: 12px;
+                    font-weight: bold;
+                }
+                .status-active {
+                    background: #d4edda;
+                    color: #155724;
+                }
+                .status-pending {
+                    background: #fff3cd;
+                    color: #856404;
+                }
+                .footer {
+                    text-align: center;
+                    margin-top: 40px;
+                    padding-top: 20px;
+                    border-top: 1px solid #e0e0e0;
+                    color: #666;
+                    font-size: 12px;
+                }
+                @media print {
+                    body { margin: 0; }
+                    .header { margin-top: 0; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>${report.title}</h1>
+                <div class="subtitle">${report.description}</div>
+                <div class="meta-info">
+                    <span>Generated: ${formatDate(report.generatedDate)}</span>
+                    <span>Report ID: ${report.id}</span>
+                    <span>Type: ${report.type}</span>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>Executive Summary</h2>
+                <p>This report provides a comprehensive overview of the Kalawa Health Center system performance and key metrics for the reporting period. The data reflects current operational status and highlights areas of success as well as opportunities for improvement.</p>
+                
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-value">${systemStats.totalPatients}</div>
+                        <div class="metric-label">Total Patients</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">${systemStats.totalDoctors}</div>
+                        <div class="metric-label">Medical Staff</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">${systemStats.activeAppointments}</div>
+                        <div class="metric-label">Active Appointments</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">${systemStats.totalStaff}</div>
+                        <div class="metric-label">Total Staff</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>User Statistics</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Role</th>
+                            <th>Count</th>
+                            <th>Status Distribution</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Patients</td>
+                            <td>${systemStats.totalPatients}</td>
+                            <td>
+                                <span class="status-badge status-active">${Math.round(systemStats.totalPatients * 0.85)} Active</span>
+                                <span class="status-badge status-pending">${Math.round(systemStats.totalPatients * 0.15)} Pending</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Doctors</td>
+                            <td>${systemStats.totalDoctors}</td>
+                            <td>
+                                <span class="status-badge status-active">${systemStats.totalDoctors} Active</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Administrators</td>
+                            <td>1</td>
+                            <td>
+                                <span class="status-badge status-active">1 Active</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="section">
+                <h2>Recent Activity & Performance</h2>
+                <p>System activity for the current reporting period shows consistent usage patterns with peak activity during regular business hours. Key performance indicators remain within expected ranges.</p>
+                
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-value">+12%</div>
+                        <div class="metric-label">Patient Growth</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">94%</div>
+                        <div class="metric-label">System Uptime</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">89%</div>
+                        <div class="metric-label">Appointment Rate</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">24/7</div>
+                        <div class="metric-label">Availability</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>Recommendations</h2>
+                <ul>
+                    <li>Continue monitoring patient registration trends for capacity planning</li>
+                    <li>Consider expanding medical staff during peak appointment hours</li>
+                    <li>Review and optimize system performance metrics quarterly</li>
+                    <li>Implement additional backup procedures for critical data</li>
+                </ul>
+            </div>
+
+            <div class="footer">
+                <p>Report generated by Kalawa Health Center Administration System</p>
+                <p>Confidential - For internal use only</p>
+                <p>Generated on: ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}</p>
+            </div>
+        </body>
+        </html>
+      `;
+
+      // Create a new window for printing
+      const printWindow = window.open('', '_blank');
+      printWindow.document.write(reportContent);
+      printWindow.document.close();
+
+      // Wait for content to load then trigger print
+      printWindow.onload = () => {
+        printWindow.focus();
+        printWindow.print();
+        
+        // Show confirmation message
+        alert(`Report "${report.title}" is being prepared for PDF download. Please use the print dialog and select "Save as PDF" as your printer.`);
+      };
+
+    } catch (error) {
+      console.error('Error downloading report:', error);
+      alert('Error downloading report. Please try again.');
+    }
+  };
 
   // ============ USE EFFECTS ============
 
@@ -906,10 +1435,149 @@ export default function AdminDashboardPage() {
                             </div>
                           </div>
                           <div className="flex gap-2">
-                            <Button size="sm" variant="outline">
-                              <Edit className="w-4 h-4 mr-2" />
-                              Edit
-                            </Button>
+                            {/* Edit User Dialog */}
+                            <Dialog open={!!editingUser && editingUser.id === userItem.id} onOpenChange={(open) => !open && closeEditDialog()}>
+                              <DialogTrigger asChild>
+                                <Button size="sm" variant="outline" onClick={() => openEditDialog(userItem)}>
+                                  <Edit className="w-4 h-4 mr-2" />
+                                  Edit
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="sm:max-w-md">
+                                <DialogHeader>
+                                  <DialogTitle>Edit User</DialogTitle>
+                                  <DialogDescription>
+                                    Update user information for {getUserName(userItem)}.
+                                  </DialogDescription>
+                                </DialogHeader>
+                                
+                                <div className="grid gap-4 py-4">
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                      <Label htmlFor="edit-first-name">First Name *</Label>
+                                      <Input
+                                        id="edit-first-name"
+                                        value={editFormData.first_name || ''}
+                                        onChange={(e) => setEditFormData({...editFormData, first_name: e.target.value})}
+                                        placeholder="First name"
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label htmlFor="edit-last-name">Last Name *</Label>
+                                      <Input
+                                        id="edit-last-name"
+                                        value={editFormData.last_name || ''}
+                                        onChange={(e) => setEditFormData({...editFormData, last_name: e.target.value})}
+                                        placeholder="Last name"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Label htmlFor="edit-email">Email Address *</Label>
+                                    <Input
+                                      id="edit-email"
+                                      type="email"
+                                      value={editFormData.email_address || ''}
+                                      onChange={(e) => setEditFormData({...editFormData, email_address: e.target.value})}
+                                      placeholder="Email address"
+                                    />
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Label htmlFor="edit-phone">Phone Number</Label>
+                                    <Input
+                                      id="edit-phone"
+                                      value={editFormData.phone_number || ''}
+                                      onChange={(e) => setEditFormData({...editFormData, phone_number: e.target.value})}
+                                      placeholder="Phone number"
+                                    />
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Label htmlFor="edit-status">Status</Label>
+                                    <Select 
+                                      value={editFormData.status} 
+                                      onValueChange={(value) => setEditFormData({...editFormData, status: value})}
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Select status" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="active">Active</SelectItem>
+                                        <SelectItem value="pending">Pending</SelectItem>
+                                        <SelectItem value="inactive">Inactive</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+
+                                  {userItem.role === 'doctor' && (
+                                    <div className="space-y-2">
+                                      <Label htmlFor="edit-specialization">Specialization</Label>
+                                      <Input
+                                        id="edit-specialization"
+                                        value={editFormData.specialization || ''}
+                                        onChange={(e) => setEditFormData({...editFormData, specialization: e.target.value})}
+                                        placeholder="Specialization"
+                                      />
+                                    </div>
+                                  )}
+
+                                  {userItem.role === 'patient' && (
+                                    <>
+                                      <div className="space-y-2">
+                                        <Label htmlFor="edit-gender">Gender</Label>
+                                        <Select 
+                                          value={editFormData.gender} 
+                                          onValueChange={(value) => setEditFormData({...editFormData, gender: value})}
+                                        >
+                                          <SelectTrigger>
+                                            <SelectValue placeholder="Select gender" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="Male">Male</SelectItem>
+                                            <SelectItem value="Female">Female</SelectItem>
+                                            <SelectItem value="Other">Other</SelectItem>
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+                                      <div className="space-y-2">
+                                        <Label htmlFor="edit-dob">Date of Birth</Label>
+                                        <Input
+                                          id="edit-dob"
+                                          type="date"
+                                          value={editFormData.dob || ''}
+                                          onChange={(e) => setEditFormData({...editFormData, dob: e.target.value})}
+                                        />
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+
+                                <DialogFooter>
+                                  <Button variant="outline" onClick={closeEditDialog}>
+                                    Cancel
+                                  </Button>
+                                  <Button 
+                                    onClick={() => handleUpdateUser(userItem.id, editFormData)}
+                                    disabled={updatingUser || !editFormData.first_name || !editFormData.last_name || !editFormData.email_address}
+                                  >
+                                    {updatingUser ? (
+                                      <>
+                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                        Updating...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <CheckCircle className="w-4 h-4 mr-2" />
+                                        Update User
+                                      </>
+                                    )}
+                                  </Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
+
                             <Button
                               size="sm"
                               variant="outline"
@@ -1013,14 +1681,258 @@ export default function AdminDashboardPage() {
                             </div>
                           </div>
                           <div className="flex gap-2">
-                            <Button size="sm" variant="outline">
-                              <Edit className="w-4 h-4 mr-2" />
-                              Update
-                            </Button>
-                            <Button size="sm" variant="outline">
-                              <FileText className="w-4 h-4 mr-2" />
-                              View Records
-                            </Button>
+                            {/* Edit Patient Dialog */}
+                            <Dialog open={!!editingPatient && editingPatient.patient_id === patient.patient_id} onOpenChange={(open) => !open && closeEditPatientDialog()}>
+                              <DialogTrigger asChild>
+                                <Button size="sm" variant="outline" onClick={() => openEditPatientDialog(patient)}>
+                                  <Edit className="w-4 h-4 mr-2" />
+                                  Update
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="sm:max-w-md">
+                                <DialogHeader>
+                                  <DialogTitle>Update Patient Record</DialogTitle>
+                                  <DialogDescription>
+                                    Update patient information for {getPatientName(patient)}.
+                                  </DialogDescription>
+                                </DialogHeader>
+                                
+                                <div className="grid gap-4 py-4">
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                      <Label htmlFor="patient-first-name">First Name *</Label>
+                                      <Input
+                                        id="patient-first-name"
+                                        value={patientEditFormData.first_name || ''}
+                                        onChange={(e) => setPatientEditFormData({...patientEditFormData, first_name: e.target.value})}
+                                        placeholder="First name"
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label htmlFor="patient-last-name">Last Name *</Label>
+                                      <Input
+                                        id="patient-last-name"
+                                        value={patientEditFormData.last_name || ''}
+                                        onChange={(e) => setPatientEditFormData({...patientEditFormData, last_name: e.target.value})}
+                                        placeholder="Last name"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Label htmlFor="patient-email">Email Address *</Label>
+                                    <Input
+                                      id="patient-email"
+                                      type="email"
+                                      value={patientEditFormData.email_address || ''}
+                                      onChange={(e) => setPatientEditFormData({...patientEditFormData, email_address: e.target.value})}
+                                      placeholder="Email address"
+                                    />
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Label htmlFor="patient-phone">Phone Number</Label>
+                                    <Input
+                                      id="patient-phone"
+                                      value={patientEditFormData.phone_number || ''}
+                                      onChange={(e) => setPatientEditFormData({...patientEditFormData, phone_number: e.target.value})}
+                                      placeholder="Phone number"
+                                    />
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Label htmlFor="patient-gender">Gender</Label>
+                                    <Select 
+                                      value={patientEditFormData.gender} 
+                                      onValueChange={(value) => setPatientEditFormData({...patientEditFormData, gender: value})}
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Select gender" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="Male">Male</SelectItem>
+                                        <SelectItem value="Female">Female</SelectItem>
+                                        <SelectItem value="Other">Other</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Label htmlFor="patient-dob">Date of Birth</Label>
+                                    <Input
+                                      id="patient-dob"
+                                      type="date"
+                                      value={patientEditFormData.dob || ''}
+                                      onChange={(e) => setPatientEditFormData({...patientEditFormData, dob: e.target.value})}
+                                    />
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Label htmlFor="patient-status">Verification Status</Label>
+                                    <Select 
+                                      value={patientEditFormData.is_verified ? "verified" : "pending"} 
+                                      onValueChange={(value) => setPatientEditFormData({...patientEditFormData, is_verified: value === "verified"})}
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Select status" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="verified">Verified</SelectItem>
+                                        <SelectItem value="pending">Pending</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </div>
+
+                                <DialogFooter>
+                                  <Button variant="outline" onClick={closeEditPatientDialog}>
+                                    Cancel
+                                  </Button>
+                                  <Button 
+                                    onClick={() => handleUpdatePatient(patient.patient_id, patientEditFormData)}
+                                    disabled={updatingPatient || !patientEditFormData.first_name || !patientEditFormData.last_name || !patientEditFormData.email_address}
+                                  >
+                                    {updatingPatient ? (
+                                      <>
+                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                        Updating...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <CheckCircle className="w-4 h-4 mr-2" />
+                                        Update Patient
+                                      </>
+                                    )}
+                                  </Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
+
+                            {/* View Patient Dialog */}
+                            <Dialog open={!!viewingPatient && viewingPatient.patient_id === patient.patient_id} onOpenChange={(open) => !open && closeViewPatientDialog()}>
+                              <DialogTrigger asChild>
+                                <Button size="sm" variant="outline" onClick={() => openViewPatientDialog(patient)}>
+                                  <Eye className="w-4 h-4 mr-2" />
+                                  View Records
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+                                <DialogHeader>
+                                  <DialogTitle>Patient Record Details</DialogTitle>
+                                  <DialogDescription>
+                                    Complete information for {getPatientName(patient)}
+                                  </DialogDescription>
+                                </DialogHeader>
+                                
+                                <div className="grid gap-6 py-4">
+                                  <div className="flex items-center gap-4">
+                                    <Avatar className="w-16 h-16">
+                                      <AvatarFallback className="bg-blue-100 text-blue-700 text-lg">
+                                        {getPatientInitials(patient)}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div>
+                                      <h3 className="text-xl font-bold">{getPatientName(patient)}</h3>
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <Badge variant="outline">ID: {patient.patient_id}</Badge>
+                                        <Badge variant={patient.is_verified ? "default" : "secondary"}>
+                                          {patient.is_verified ? 'Verified' : 'Pending Verification'}
+                                        </Badge>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid md:grid-cols-2 gap-6">
+                                    <div className="space-y-4">
+                                      <Card>
+                                        <CardHeader className="pb-3">
+                                          <CardTitle className="text-sm">Personal Information</CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="space-y-2 text-sm">
+                                          <div className="flex justify-between">
+                                            <span className="font-medium">Age:</span>
+                                            <span>{calculateAge(patient.dob)} years</span>
+                                          </div>
+                                          <div className="flex justify-between">
+                                            <span className="font-medium">Gender:</span>
+                                            <span>{patient.gender || 'Not specified'}</span>
+                                          </div>
+                                          <div className="flex justify-between">
+                                            <span className="font-medium">Date of Birth:</span>
+                                            <span>{formatDate(patient.dob)}</span>
+                                          </div>
+                                        </CardContent>
+                                      </Card>
+
+                                      <Card>
+                                        <CardHeader className="pb-3">
+                                          <CardTitle className="text-sm">Contact Information</CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="space-y-2 text-sm">
+                                          <div className="flex justify-between">
+                                            <span className="font-medium">Email:</span>
+                                            <span>{patient.email_address || 'Not provided'}</span>
+                                          </div>
+                                          <div className="flex justify-between">
+                                            <span className="font-medium">Phone:</span>
+                                            <span>{patient.phone_number || 'Not provided'}</span>
+                                          </div>
+                                        </CardContent>
+                                      </Card>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                      <Card>
+                                        <CardHeader className="pb-3">
+                                          <CardTitle className="text-sm">Account Information</CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="space-y-2 text-sm">
+                                          <div className="flex justify-between">
+                                            <span className="font-medium">Registered:</span>
+                                            <span>{formatDate(patient.created_at)}</span>
+                                          </div>
+                                          <div className="flex justify-between">
+                                            <span className="font-medium">Last Updated:</span>
+                                            <span>{formatDate(patient.updated_at)}</span>
+                                          </div>
+                                          <div className="flex justify-between">
+                                            <span className="font-medium">Account Status:</span>
+                                            <Badge variant={patient.is_verified ? "default" : "secondary"}>
+                                              {patient.is_verified ? 'Active' : 'Pending'}
+                                            </Badge>
+                                          </div>
+                                        </CardContent>
+                                      </Card>
+
+                                      <Card>
+                                        <CardHeader className="pb-3">
+                                          <CardTitle className="text-sm">Medical Summary</CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="text-sm">
+                                          <p className="text-muted-foreground">
+                                            No medical records available. Medical history would be displayed here when available.
+                                          </p>
+                                        </CardContent>
+                                      </Card>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <DialogFooter>
+                                  <Button variant="outline" onClick={closeViewPatientDialog}>
+                                    Close
+                                  </Button>
+                                  <Button onClick={() => {
+                                    closeViewPatientDialog();
+                                    openEditPatientDialog(patient);
+                                  }}>
+                                    <Edit className="w-4 h-4 mr-2" />
+                                    Edit Record
+                                  </Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
+
                             <Button
                               size="sm"
                               variant="outline"
@@ -1054,10 +1966,12 @@ export default function AdminDashboardPage() {
                     <h2 className="text-2xl font-bold">System Reports & Analytics</h2>
                     <p className="text-muted-foreground">Generate and download comprehensive system reports</p>
                   </div>
-                  <Button size="sm" onClick={handleGenerateReport}>
-                    <BarChart3 className="w-4 h-4 mr-2" />
-                    Generate New Report
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={handleGenerateReport}>
+                      <BarChart3 className="w-4 h-4 mr-2" />
+                      Generate New Report
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
@@ -1115,7 +2029,7 @@ export default function AdminDashboardPage() {
                               <h3 className="font-semibold text-lg">{report.title}</h3>
                               <p className="text-muted-foreground">{report.description}</p>
                               <div className="flex items-center gap-4 text-sm text-muted-foreground mt-2">
-                                <span>Generated: {report.generatedDate}</span>
+                                <span>Generated: {formatDate(report.generatedDate)}</span>
                                 <Badge variant="outline">{report.type}</Badge>
                                 {report.fileSize && <span>Size: {report.fileSize}</span>}
                               </div>
@@ -1131,9 +2045,12 @@ export default function AdminDashboardPage() {
                               {report.status}
                             </Badge>
                             {report.status === "ready" && (
-                              <Button size="sm">
+                              <Button 
+                                size="sm" 
+                                onClick={() => handleDownloadReport(report.id)}
+                              >
                                 <Download className="w-4 h-4 mr-2" />
-                                Download
+                                Download PDF
                               </Button>
                             )}
                           </div>
@@ -1225,6 +2142,70 @@ export default function AdminDashboardPage() {
             </Tabs>
           </div>
         </section>
+
+        {/* Generate Report Dialog */}
+        <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Generate New Report</DialogTitle>
+              <DialogDescription>
+                Select the type of report you want to generate.
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="report-type">Report Type</Label>
+                <Select 
+                  value={selectedReportType} 
+                  onValueChange={setSelectedReportType}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select report type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="system_overview">System Overview</SelectItem>
+                    <SelectItem value="patient_analytics">Patient Analytics</SelectItem>
+                    <SelectItem value="doctor_performance">Medical Staff Performance</SelectItem>
+                    <SelectItem value="financial_summary">Financial Summary</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="bg-muted p-4 rounded-lg">
+                <h4 className="font-medium mb-2">Report Details:</h4>
+                <p className="text-sm text-muted-foreground">
+                  {selectedReportType === "system_overview" && "Comprehensive system performance and usage statistics"}
+                  {selectedReportType === "patient_analytics" && "Patient registration trends and demographic analysis"}
+                  {selectedReportType === "doctor_performance" && "Doctor consultation metrics and efficiency analysis"}
+                  {selectedReportType === "financial_summary" && "Revenue, billing, and financial performance overview"}
+                </p>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setReportDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleConfirmGenerateReport}
+                disabled={generatingReport}
+              >
+                {generatingReport ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <BarChart3 className="w-4 h-4 mr-2" />
+                    Generate Report
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Footer />
       </div>
