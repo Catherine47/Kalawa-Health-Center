@@ -40,18 +40,21 @@ import {
 // Base URL for your Express.js backend
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
 
+// ✅ UPDATED: Doctor interface that matches ACTUAL backend response
 interface Doctor {
   doctor_id: number
-  first_name: string
+  first_name: string  // May contain "Dr." prefix
   last_name: string
   specialization: string
-  email: string
+  email_address: string  // ✅ Changed from 'email' to 'email_address' to match backend
   phone_number: string
-  availability_status: string
-  consultation_fee: number
-  experience_years: number
-  bio: string
-  profile_picture: string
+  // ❌ REMOVED: These fields are NOT returned by your backend
+  // email: string
+  // availability_status: string
+  // consultation_fee: number
+  // experience_years: number
+  // bio: string
+  // profile_picture: string
 }
 
 export default function DashboardPage() {
@@ -79,6 +82,35 @@ export default function DashboardPage() {
   const [availableDoctors, setAvailableDoctors] = useState<Doctor[]>([])
   const [availableDoctorsCount, setAvailableDoctorsCount] = useState(0)
   const [doctorsLoading, setDoctorsLoading] = useState(true)
+
+  // ✅ ADDED: Helper function to format doctor names (fixes "Dr. Dr." issue)
+  const formatDoctorName = (firstName: string, lastName: string): string => {
+    if (!firstName || !lastName) return "Unknown Doctor"
+    
+    let cleanFirstName = firstName.trim()
+    
+    // Remove "Dr." prefix if it exists (case insensitive)
+    if (cleanFirstName.toLowerCase().startsWith('dr.')) {
+      cleanFirstName = cleanFirstName.substring(3).trim()
+    } else if (cleanFirstName.toLowerCase().startsWith('dr')) {
+      cleanFirstName = cleanFirstName.substring(2).trim()
+    }
+    
+    // Remove any other "Dr." occurrences
+    cleanFirstName = cleanFirstName.replace(/dr\./gi, '').trim()
+    
+    return `Dr. ${cleanFirstName} ${lastName.trim()}`
+  }
+
+  // ✅ ADDED: Helper to format phone numbers
+  const formatPhoneNumber = (phone: string): string => {
+    if (!phone) return "N/A"
+    // Format Kenyan phone numbers: 0712345678 -> (071) 234-5678
+    if (phone.length === 10 && phone.startsWith('0')) {
+      return `(${phone.substring(0, 3)}) ${phone.substring(3, 6)}-${phone.substring(6)}`
+    }
+    return phone
+  }
 
   // ✅ UPDATED: Use getUpcomingAppointmentsWithDoctors which includes doctor names
   const fetchAppointments = async () => {
@@ -316,7 +348,7 @@ export default function DashboardPage() {
     }
   };
 
-  // ✅ ADDED: Fetch available doctors list
+  // ✅ UPDATED: Fetch available doctors list - FIXED to match actual backend response
   const fetchAvailableDoctors = async () => {
     try {
       setDoctorsLoading(true);
@@ -331,8 +363,16 @@ export default function DashboardPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setAvailableDoctors(data.available_doctors || []);
-        console.log(`✅ Loaded ${data.available_doctors.length} available doctors`);
+        
+        if (data.success) {
+          // ✅ Now using the correct field names from backend
+          const doctors = data.available_doctors || [];
+          setAvailableDoctors(doctors);
+          console.log(`✅ Loaded ${doctors.length} available doctors`);
+        } else {
+          console.error('❌ API returned error:', data.error);
+          setAvailableDoctors([]);
+        }
       } else {
         console.error('❌ Failed to fetch doctors list:', response.status);
         setAvailableDoctors([]);
@@ -820,7 +860,7 @@ export default function DashboardPage() {
                 </Card>
               </TabsContent>
 
-              {/* ✅ ADDED: Available Doctors Tab */}
+              {/* ✅ UPDATED: Available Doctors Tab - FIXED with correct fields */}
               <TabsContent value="doctors" className="space-y-6">
                 <Card>
                   <CardHeader>
@@ -861,14 +901,16 @@ export default function DashboardPage() {
                                 <Stethoscope className="w-6 h-6 text-blue-600" />
                               </div>
                               <div>
-                                <h3 className="font-semibold">Dr. {doctor.first_name} {doctor.last_name}</h3>
+                                {/* ✅ FIXED: Using formatDoctorName to fix "Dr. Dr." issue */}
+                                <h3 className="font-semibold">
+                                  {formatDoctorName(doctor.first_name, doctor.last_name)}
+                                </h3>
                                 <p className="text-sm text-muted-foreground">{doctor.specialization}</p>
                                 <div className="flex gap-4 text-xs text-muted-foreground mt-1">
-                                  <span>Experience: {doctor.experience_years} years</span>
-                                  <span>Fee: ${doctor.consultation_fee}</span>
-                                  {doctor.bio && (
-                                    <span className="max-w-xs truncate">{doctor.bio}</span>
-                                  )}
+                                  {/* ❌ REMOVED: experience_years and consultation_fee (not returned by backend) */}
+                                  {/* ✅ ADDED: Show actual fields from backend */}
+                                  <span>Phone: {formatPhoneNumber(doctor.phone_number)}</span>
+                                  <span>Email: {doctor.email_address}</span>
                                 </div>
                               </div>
                             </div>

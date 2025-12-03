@@ -54,7 +54,7 @@ router.get("/available-doctors", authenticate, async (req, res) => {
         first_name,
         last_name,
         specialization,
-        email_address as email,
+        email_address,
         phone_number
        FROM doctors 
        WHERE is_deleted = false

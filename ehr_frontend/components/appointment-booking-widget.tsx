@@ -32,6 +32,20 @@ interface AppointmentBookingWidgetProps {
   isBooking?: boolean
 }
 
+// ✅ ADD THIS FUNCTION HERE (after interfaces, before BookingSuccess)
+const formatDoctorName = (firstName: string, lastName: string): string => {
+  if (!firstName || !lastName) return "Unknown Doctor";
+  
+  // Remove ALL "Dr." prefixes
+  const cleanFirstName = firstName.replace(/^dr\.?\s*/i, '').trim();
+  
+  if (!cleanFirstName) {
+    return `Dr. ${lastName.trim()}`;
+  }
+  
+  return `Dr. ${cleanFirstName} ${lastName.trim()}`;
+};
+
 // -------------------------- Success Component --------------------------
 function BookingSuccess({ booking, onNewBooking }: { booking: any; onNewBooking: () => void }) {
   const router = useRouter()
@@ -256,7 +270,7 @@ export function AppointmentBookingWidget({
       console.log("✅ Backend result:", result)
 
       const bookingConfirmation = {
-        doctor_name: `Dr. ${currentDoctorInfo.first_name} ${currentDoctorInfo.last_name}`,
+        doctor_name: formatDoctorName(currentDoctorInfo.first_name, currentDoctorInfo.last_name),
         doctor_specialty: currentDoctorInfo.specialization,
         department: currentDepartmentInfo.name,
         appointment_date: appointmentDate,
@@ -419,8 +433,8 @@ export function AppointmentBookingWidget({
                 <SelectContent>
                   {doctors.map((doctor) => (
                     <SelectItem key={doctor.id} value={String(doctor.id)}>
-                      Dr. {doctor.first_name} {doctor.last_name} - {doctor.specialization}
-                    </SelectItem>
+                      {formatDoctorName(doctor.first_name, doctor.last_name)} - {doctor.specialization}
+                        </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
