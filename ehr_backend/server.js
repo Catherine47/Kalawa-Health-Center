@@ -33,7 +33,7 @@ import appointmentRoutes from "./routes/appointmentRoutes.js";
 import prescriptionRoutes from "./routes/prescriptionRoutes.js";
 import prescriptionDrugsRoutes from "./routes/prescriptionDrugsRoutes.js";
 import medicalRecordsRoutes from './routes/medicalRecords.js';
-import authRoutes from "./routes/authRoutes.js"; // ✅ OTP/auth route
+import authRoutes from "./routes/authroutes.js"; // ✅ OTP/auth route
 
 // ✅ Root route
 app.get("/", (req, res) => {
