@@ -1,46 +1,35 @@
-// db.js - SUPPORTS BOTH LOCAL & RENDER
+// db.js
 import pkg from "pg";
 const { Pool } = pkg;
-import dotenv from 'dotenv';
 
-dotenv.config();
-
-// ✅ SMART CONFIG: Uses Render DATABASE_URL if available, otherwise localhost
-const poolConfig = process.env.DATABASE_URL 
-  ? {
-      // ✅ PRODUCTION (Render)
-      connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false }, // REQUIRED for Render
-    }
-  : {
-      // ✅ DEVELOPMENT (Local)
-      user: "postgres",
-      host: "localhost",
-      database: "ehr_system",
-      password: "30554106",
-      port: 5432,
-    };
-
-// Add common pool settings
-Object.assign(poolConfig, {
-  max: 10,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
+// ✅ Create a single shared connection pool
+const pool = new Pool({
+  user: "postgres",
+  host: "localhost",
+  database: "ehr_system",
+  password: "30554106", // ← if you use a password, put it here
+  port: 5432,
+  max: 10, // limit to 10 connections (safe for most apps)
+  idleTimeoutMillis: 30000, // close idle clients after 30s
+  connectionTimeoutMillis: 5000, // timeout if can't connect within 5s
 });
 
-const pool = new Pool(poolConfig);
-
-// Test function
+// ✅ Simple function to test the connection
 export const testDB = async () => {
   try {
     const res = await pool.query("SELECT NOW()");
-    const env = process.env.DATABASE_URL ? "PRODUCTION" : "LOCAL";
-    console.log(`✅ Database connected (${env}):`, res.rows[0]);
-    return true;
+    console.log("✅ Database connected successfully:", res.rows[0]);
   } catch (err) {
     console.error("❌ Database connection failed:", err.message);
-    return false;
   }
 };
 
+// ✅ Export shared pool
 export { pool };
+
+
+
+
+
+
+
